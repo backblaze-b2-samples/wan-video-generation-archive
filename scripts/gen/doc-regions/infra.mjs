@@ -193,6 +193,7 @@ function railwayServices() {
 
 export const infraRunbooks = [
   {
+    target: "vercel",
     file: "infra/vercel/README.md",
     regions: {
       "vercel-services": vercelServices,
@@ -202,6 +203,7 @@ export const infraRunbooks = [
     },
   },
   {
+    target: "railway",
     file: "infra/railway/README.md",
     regions: {
       "railway-services": railwayServices,

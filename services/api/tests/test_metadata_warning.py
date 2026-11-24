@@ -79,7 +79,7 @@ async def test_detail_route_exposes_the_warning(client, monkeypatch):
         lambda key: FileMetadata(
             key=key,
             filename="huge.png",
-            folder="uploads/",
+            folder="video/",
             size_bytes=len(payload),
             size_human="1.0 KB",
             content_type="image/png",
@@ -90,7 +90,7 @@ async def test_detail_route_exposes_the_warning(client, monkeypatch):
     monkeypatch.setattr(files_service, "get_object_bytes", lambda key: payload)
 
     response = await client.get(
-        "/files-by-key/detail", params={"key": "uploads/huge.png"}
+        "/files-by-key/detail", params={"key": "video/huge.png"}
     )
 
     assert response.status_code == 200

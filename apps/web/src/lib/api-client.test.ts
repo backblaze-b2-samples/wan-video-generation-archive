@@ -7,7 +7,9 @@ import {
   getFile,
   getFileDetail,
   getPreviewUrl,
-  uploadFile,
+  fillPath,
+  generateClip,
+  shareClip,
 } from "./api-client";
 
 type FileKeyOperation = {
@@ -34,7 +36,7 @@ const operations: FileKeyOperation[] = [
       "reports/download",
       "reports/preview",
       "../secret.txt",
-      "uploads/%2e%2e/secret.txt",
+      "video/%2e%2e/secret.txt",
     ].map((key) => ({ key })),
   },
   {
@@ -43,7 +45,7 @@ const operations: FileKeyOperation[] = [
     method: "GET",
     name: "getDownloadUrl",
     path: "/files-by-key/download",
-    unsafeFallbackKeys: ["../secret.txt", "uploads/%2e%2e/secret.txt"].map((key) => ({
+    unsafeFallbackKeys: ["../secret.txt", "video/%2e%2e/secret.txt"].map((key) => ({
       key,
     })),
   },
@@ -53,7 +55,7 @@ const operations: FileKeyOperation[] = [
     method: "GET",
     name: "getPreviewUrl",
     path: "/files-by-key/preview",
-    unsafeFallbackKeys: ["../secret.txt", "uploads/%2e%2e/secret.txt"].map((key) => ({
+    unsafeFallbackKeys: ["../secret.txt", "video/%2e%2e/secret.txt"].map((key) => ({
       key,
     })),
   },
@@ -63,7 +65,7 @@ const operations: FileKeyOperation[] = [
     method: "DELETE",
     name: "deleteFile",
     path: "/files-by-key",
-    unsafeFallbackKeys: ["../secret.txt", "uploads/%2e%2e/secret.txt"].map((key) => ({
+    unsafeFallbackKeys: ["../secret.txt", "video/%2e%2e/secret.txt"].map((key) => ({
       key,
     })),
   },
@@ -74,7 +76,7 @@ const keyCases = [
   "folder/file #1?.txt",
   "folder/100% complete.txt",
   "../secret.txt",
-  "uploads/%2e%2e/secret.txt",
+  "video/%2e%2e/secret.txt",
   "stats",
   "stats/activity",
   "tenant-a/reports/download",
@@ -143,7 +145,7 @@ describe.each(operations)(
     });
 
     it("falls back to the legacy route when the query route is unavailable", async () => {
-      const key = "uploads/report final.txt";
+      const key = "video/report final.txt";
       fetchMock
         .mockResolvedValueOnce(errorResponse(404, "Not Found"))
         .mockResolvedValueOnce(jsonResponse({ key }));
@@ -206,7 +208,7 @@ describe("getFileDetail", () => {
   it("does not fall back on 404 — it surfaces the error in one request", async () => {
     fetchMock.mockResolvedValueOnce(errorResponse(404, "Not Found"));
 
-    await expect(getFileDetail("uploads/gone.png")).rejects.toMatchObject({
+    await expect(getFileDetail("video/gone.png")).rejects.toMatchObject({
       status: 404,
     });
 
@@ -214,63 +216,39 @@ describe("getFileDetail", () => {
   });
 });
 
-// A blocked browser→B2 PUT is the one failure a deployer hits first, and XHR
-// reports it as a contentless `error` event. The message therefore has to name
-// bucket CORS: pointing at the API instead sends people to a clean 200 in the
-// API log and wastes the debugging session.
-describe("uploadFile — direct-to-B2 PUT failure", () => {
-  class BlockedXhr {
-    static instances: BlockedXhr[] = [];
-    upload = { addEventListener: vi.fn() };
-    private handlers: Record<string, (() => void)[]> = {};
-    status = 0;
-
-    constructor() {
-      BlockedXhr.instances.push(this);
-    }
-
-    addEventListener(event: string, handler: () => void) {
-      (this.handlers[event] ??= []).push(handler);
-    }
-
-    open = vi.fn();
-    setRequestHeader = vi.fn();
-
-    send() {
-      // What the browser does when the bucket's CORS rejects the origin.
-      for (const handler of this.handlers.error ?? []) handler();
-    }
-  }
-
-  beforeEach(() => {
-    BlockedXhr.instances = [];
-    vi.stubGlobal("XMLHttpRequest", BlockedXhr);
+describe("clip routes", () => {
+  it("encodes path parameters and refuses missing ones", () => {
+    expect(
+      fillPath("/projects/{project}/clips/{clip_id}", {
+        project: "demo",
+        clip_id: "20260101T000000Z-deadbeef",
+      })
+    ).toBe("/projects/demo/clips/20260101T000000Z-deadbeef");
+    expect(() => fillPath("/projects/{project}/archive", {})).toThrow(ApiError);
   });
 
-  it("blames bucket CORS, not the API", async () => {
-    fetchMock.mockResolvedValueOnce(
-      jsonResponse({
-        headers: { "Content-Type": "text/plain" },
-        key: "uploads/note.txt",
-        method: "put",
-        url: "https://s3.example.backblazeb2.com/bucket/uploads/note.txt",
-      })
-    );
+  it("posts a generation request as JSON", async () => {
+    fetchMock.mockResolvedValueOnce(jsonResponse({ job_id: "j1", status: "queued" }));
+    await generateClip({
+      project: "demo",
+      prompt: "A red fox",
+      model_id: "wan2.2-ti2v-5b",
+      resolution: "480p",
+      num_frames: 49,
+      num_inference_steps: 30,
+      guidance_scale: 5,
+    });
+    const [url, init] = fetchMock.mock.calls[0];
+    expect(String(url)).toMatch(/\/clips$/);
+    expect(init?.method).toBe("POST");
+    expect(JSON.parse(String(init?.body)).prompt).toBe("A red fox");
+  });
 
-    const file = new File(["hi"], "note.txt", { type: "text/plain" });
-
-    const error = await uploadFile(file).catch((e: unknown) => e);
-
-    expect(error).toBeInstanceOf(ApiError);
-    expect((error as ApiError).status).toBe(0);
-    expect((error as ApiError).message).toMatch(/bucket's CORS/);
-    expect((error as ApiError).message).not.toMatch(/API logs/);
-
-    // The presign succeeded; verify must never run after a failed PUT.
-    expect(
-      fetchMock.mock.calls.some(([input]) =>
-        String(input).includes("/upload/verify")
-      )
-    ).toBe(false);
+  it("sends the share lifetime", async () => {
+    fetchMock.mockResolvedValueOnce(jsonResponse({ url: "https://signed" }));
+    await shareClip("demo", "c1", 900);
+    const [url, init] = fetchMock.mock.calls[0];
+    expect(String(url)).toMatch(/\/projects\/demo\/clips\/c1\/share$/);
+    expect(JSON.parse(String(init?.body))).toEqual({ expires_in_seconds: 900 });
   });
 });

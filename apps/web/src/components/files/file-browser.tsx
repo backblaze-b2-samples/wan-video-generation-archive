@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { FolderOpen, RefreshCw, Upload } from "lucide-react";
+import { Clapperboard, FolderOpen, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -36,7 +36,7 @@ import {
   fileListTruncationNotice,
 } from "@/lib/file-list-limit";
 import { ancestorPaths, takePreviewKeyFromUrl } from "@/lib/preview-deep-link";
-import type { FileMetadata } from "@vibe-coding-starter-kit/shared";
+import type { FileMetadata } from "@wan-video-generation-archive/shared";
 
 export function FileBrowser() {
   const {
@@ -76,7 +76,7 @@ export function FileBrowser() {
     setExpanded((prev) => (prev.size > 0 ? prev : initialExpandedPaths(tree)));
   }, [files.length, tree]);
 
-  // Deep link from the ⌘K palette or a dashboard row (`/files?preview=<key>`):
+  // Deep link from the ⌘K palette or a library link (`/files?preview=<key>`):
   // reveal the file's folders and open its preview, so picking a specific file
   // lands on that file instead of just navigating to this page.
   useEffect(() => {
@@ -200,12 +200,12 @@ export function FileBrowser() {
             <EmptyState
               icon={FolderOpen}
               title="This bucket is empty"
-              description="Upload some files to see them listed here."
+              description="Generate a clip to see its objects listed here."
               action={
                 <Button asChild size="sm">
-                  <Link href="/upload">
-                    <Upload aria-hidden="true" className="h-3.5 w-3.5" />
-                    Upload files
+                  <Link href="/generate">
+                    <Clapperboard aria-hidden="true" className="h-3.5 w-3.5" />
+                    Generate a clip
                   </Link>
                 </Button>
               }

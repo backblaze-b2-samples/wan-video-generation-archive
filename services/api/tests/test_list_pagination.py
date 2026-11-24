@@ -31,12 +31,12 @@ def _obj(key: str, size: int = 10) -> dict:
 def _install_fake_client(monkeypatch) -> _FakePaginatedS3:
     pages = {
         None: {
-            "Contents": [_obj("uploads/a.txt"), _obj("uploads/b.txt")],
+            "Contents": [_obj("video/a.txt"), _obj("video/b.txt")],
             "IsTruncated": True,
             "NextContinuationToken": "page-2",
         },
         "page-2": {
-            "Contents": [_obj("uploads/c.txt")],
+            "Contents": [_obj("video/c.txt")],
             "IsTruncated": False,
         },
     }
@@ -51,9 +51,9 @@ def test_list_files_follows_continuation_token(monkeypatch):
     files = b2_client.list_files()
 
     assert {f.key for f in files} == {
-        "uploads/a.txt",
-        "uploads/b.txt",
-        "uploads/c.txt",
+        "video/a.txt",
+        "video/b.txt",
+        "video/c.txt",
     }
     assert client.calls == 2  # both pages fetched, not just the first
 

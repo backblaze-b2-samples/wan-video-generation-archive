@@ -2,69 +2,65 @@
 
 ## Users
 
-AI coding agents and "vibe coders" (developers who lean on AI to move fast) who clone
-this kit as the foundation for a new full-stack app. Their context: they want to skip
-the boilerplate loop (dashboard, upload, file browser, cloud storage wiring) and go
-straight to building their app's unique features. They read the repo, keep the shared
-scaffolding, and rebrand + rewrite the dashboard for their own use case.
+ML and media engineers who run an open video model on their own GPU and must
+keep every output traceable as it ages, plus the AI coding agents that extend
+this sample for them. Their context: clips pile up fast, and a clip without its
+prompt, seed and exact model version cannot be explained, reproduced or safely
+shared once it leaves the working folder.
 
 ## Product Purpose
 
-An engineering-grade full-stack starter kit (Next.js 16 + React 19 + Tailwind v4 +
-shadcn/ui frontend, FastAPI backend) with Backblaze B2 cloud storage integrated out of
-the box. It ships a dashboard, drag-and-drop upload, and a file browser so builders
-start from a working app, not a blank page. Success = a builder can clone it, run it,
-rebrand it via one config file, and trust every screen enough to build on top without
-first fixing it.
+Generate short clips with Wan2.2 TI2V-5B through Diffusers on one GPU, at a
+pinned model revision, and keep each clip in Backblaze B2 with a manifest entry
+that records its prompt, seed, model, revision, license and checksum. An age job
+moves older clips to an archive prefix and rewrites their manifest keys; any
+clip can be shared through an expiring presigned link or regenerated from its
+manifest entry. Success = an engineer can point at any clip, months later, and
+say exactly how it was made, where it lives, and who can open it.
+
+Out of scope: transcoding, streaming, multi-GPU or batch scheduling, fine-tuning,
+user accounts, image-to-video conditioning, and any model whose license
+restricts commercial use.
 
 ## Maturity and Support Boundary
 
-This is a maintained open-source template/sample, not a complete hosted SaaS product.
-It is built with production-minded controls and can be adapted for production use with
-caution, but adopters own product-specific validation, security, deployment, and
-operations. Repository defects and feature requests go through the public GitHub issue
-tracker; B2 account, billing, service, and API questions go through Backblaze Support.
-The template/sample itself is not covered by the Backblaze service level agreement,
-and no SLA is provided for the repository software.
+This is a maintained open-source sample, not a hosted video service. It is built
+with production-minded controls and can be adapted for production use with
+caution, but adopters own product-specific validation, security, deployment and
+operations. Repository defects and feature requests go through the public GitHub
+issue tracker; B2 account, billing, service and API questions go through
+Backblaze Support. The sample is not covered by the Backblaze service level
+agreement, and no SLA is provided for the repository software.
 
 ## Brand Personality
 
-Confident, precise, quietly professional. Voice is direct and free of hype ("Stop
-wiring boilerplate and start building"). The interface should feel like a modern
-developer tool — considered, calm, trustworthy — not a marketing showpiece. It is a
-**neutral foundation** that others rebrand: the design carries craft through restraint,
-not through a strong opinionated identity of its own.
+Precise, calm, factual. The interface reads like an engineering tool: it shows
+the seed, the 40-hex revision and the checksum rather than hiding them, and it
+labels every clip as AI-generated without ceremony.
 
 ## Anti-references
 
-- **Generic AI/SaaS slop.** No gradient text, hero-metric templates, identical
-  icon-card grids, tracked uppercase eyebrows, or decorative glassmorphism. These are
-  the exact 2026 AI tells this kit exists to help builders avoid.
-- **Over-branded / loud.** No heavy brand-color drenching, decorative motion, or flashy
-  effects. It is scaffolding to be rebranded, not a hero page.
-- **Toy / prototype feel.** No missing states, inconsistent components, or placeholder
-  polish. Must read as polished, dependable scaffolding.
-- **Enterprise-drab.** No Bootstrap-era gray boxes or dense-but-lifeless admin-panel
-  look. Considered, like modern dev tools (Linear, GitHub Primer, Stripe).
+- **Generative-media hype.** No gradient hero, no showreel autoplay wall, no
+  "magic" language. The clips are outputs to be tracked, not a gallery to sell.
+- **Hidden provenance.** Never show a clip without a path to its full manifest
+  entry, and never imply a clip can be edited after the fact.
+- **Toy / prototype feel.** No missing loading, empty or error states.
 
 ## Design Principles
 
-- **Practice what you preach.** The kit itself must model the engineering quality it
-  asks agents to produce. Slop here propagates into every project built on it.
-- **Neutral foundation, easy to rebrand.** Identity lives in tokens (`globals.css`) and
-  one config file. Screens are built from the shared UI kit so a rebrand is a token
-  swap, not a rewrite.
-- **Earned familiarity over novelty.** Use standard, trusted affordances (top bar +
-  side nav, command palette, data tables). The tool disappears into the task.
-- **Every state is designed.** Default, hover, focus, active, disabled, loading (skeleton),
-  empty (teaches the interface), and error (says what's wrong + offers retry) — never
-  half-shipped.
-- **Consistency is the feature.** One button vocabulary, one form-control set, one icon
-  style across every screen. Divergence is a bug.
+- **Provenance first.** Every screen that shows a clip links to its prompt, seed,
+  model revision and checksum.
+- **Safe defaults, visible.** Forms show their defaults as placeholders and
+  descriptions; destructive and storage-moving actions default to dry run or
+  ask for confirmation.
+- **One source of truth.** The manifest decides where a clip is; the UI reads
+  manifests, not bucket listings, for anything clip-shaped.
+- **Every state is designed.** Default, loading, empty, error, queued, running,
+  failed.
 
 ## Accessibility & Inclusion
 
-Target **WCAG 2.1 AA**. Body text ≥ 4.5:1, large/bold text ≥ 3:1, visible focus
-indicators on every interactive element, full keyboard navigation, correct semantic
-landmarks and heading order, labelled form controls, and a `prefers-reduced-motion`
-alternative for every animation. Full light and dark theme parity.
+Target **WCAG 2.1 AA**. Body text ≥ 4.5:1, visible focus indicators, full
+keyboard navigation (the share lifetime control is a radio group), labelled form
+controls, `aria-live` job progress, and a `prefers-reduced-motion` alternative
+for every animation. Full light and dark theme parity.

@@ -29,7 +29,11 @@ and the release process. Two companion docs carry the reference material:
 - Frontend typecheck: `pnpm typecheck`
 - Frontend lint: `pnpm lint`
 - Backend lint: `pnpm lint:api`
-- E2E: `pnpm test:e2e` (run `pnpm --filter @vibe-coding-starter-kit/web exec playwright install chromium` once first)
+- Live B2 connectivity: `RUN_LIVE_B2_TESTS=1 pnpm test:live:b2`
+- GPU memory gate (GPU host): `pnpm gpu:preflight`
+- Live model self-test (GPU host): `RUN_LIVE_B2_TESTS=1 pnpm test:live:gpu`
+- Headless operations: `services/api/.venv/bin/python services/api/scripts/wan_archive.py generate|age|lookup|share|regenerate` (run from `services/api/`)
+- E2E: `pnpm test:e2e` (run `pnpm --filter @wan-video-generation-archive/web exec playwright install chromium` once first)
 - App verification specs: `pnpm test:verify` (specs in the gitignored `apps/web/e2e/verify/`)
 
 What each gate checks, its prerequisites, and how to recover when one fails:

@@ -6,6 +6,7 @@ from threading import Lock
 from fastapi import APIRouter, Request, Response
 from fastapi.responses import JSONResponse
 
+from app.service.container import peek_services
 from app.types import ErrorResponse
 
 logger = logging.getLogger(__name__)
@@ -16,8 +17,6 @@ router = APIRouter()
 _lock = Lock()
 _request_count: dict[str, int] = defaultdict(int)
 _request_duration_sum: dict[str, float] = defaultdict(float)
-_upload_count = 0
-_upload_errors = 0
 
 
 def record_request(method: str, path: str, status: int, duration: float) -> None:
@@ -26,15 +25,6 @@ def record_request(method: str, path: str, status: int, duration: float) -> None
     with _lock:
         _request_count[key] += 1
         _request_duration_sum[key] += duration
-
-
-def record_upload(success: bool) -> None:
-    global _upload_count, _upload_errors
-    with _lock:
-        if success:
-            _upload_count += 1
-        else:
-            _upload_errors += 1
 
 
 @router.get("/metrics")
@@ -63,13 +53,15 @@ async def metrics():
                 f'http_request_duration_seconds{{method="{method}",path="{path}",status="{status}"}} {duration:.6f}'
             )
 
-        lines.append("# HELP uploads_total Total uploads")
-        lines.append("# TYPE uploads_total counter")
-        lines.append(f"uploads_total {_upload_count}")
-
-        lines.append("# HELP upload_errors_total Total upload errors")
-        lines.append("# TYPE upload_errors_total counter")
-        lines.append(f"upload_errors_total {_upload_errors}")
+    services = peek_services()
+    succeeded = services.jobs.succeeded if services else 0
+    failed = services.jobs.failed if services else 0
+    lines.append("# HELP clips_generated_total Generation jobs that stored a clip")
+    lines.append("# TYPE clips_generated_total counter")
+    lines.append(f"clips_generated_total {succeeded}")
+    lines.append("# HELP clip_generation_errors_total Generation jobs that failed")
+    lines.append("# TYPE clip_generation_errors_total counter")
+    lines.append(f"clip_generation_errors_total {failed}")
 
     return Response(content="\n".join(lines) + "\n", media_type="text/plain")
 

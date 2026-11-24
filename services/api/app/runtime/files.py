@@ -10,6 +10,7 @@ from fastapi import APIRouter, HTTPException
 from app.service.files import (
     FileKeyError,
     FileNotFoundServiceError,
+    FileProtectedError,
     FileTooLargeServiceError,
     get_download_url,
     get_file,
@@ -17,11 +18,9 @@ from app.service.files import (
     get_files,
     get_preview_url,
     get_stats,
-    get_upload_activity,
     remove_file,
 )
 from app.types import (
-    DailyUploadCount,
     DeleteFileResponse,
     FileMetadata,
     FileMetadataDetail,
@@ -80,6 +79,8 @@ def _delete_file_response(key: str) -> DeleteFileResponse:
         remove_file(key)
     except FileKeyError as e:
         raise HTTPException(status_code=400, detail=e.detail) from None
+    except FileProtectedError as e:
+        raise HTTPException(status_code=409, detail=e.detail) from None
     except RuntimeError:
         raise HTTPException(status_code=500, detail="Failed to delete file") from None
     logger.info("File deleted: key=%s", key)
@@ -97,13 +98,6 @@ def list_files_endpoint(prefix: str = "", limit: int = 100):
 @router.get("/files/stats", response_model=UploadStats)
 def stats_endpoint():
     return get_stats()
-
-
-@router.get("/files/stats/activity", response_model=list[DailyUploadCount])
-def upload_activity_endpoint(days: int = 7):
-    if days < 1 or days > 90:
-        raise HTTPException(status_code=400, detail="Days must be between 1 and 90")
-    return get_upload_activity(days=days)
 
 
 @router.get("/files-by-key/download", response_model=FileUrlResponse)

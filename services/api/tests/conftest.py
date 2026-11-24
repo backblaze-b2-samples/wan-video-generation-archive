@@ -74,10 +74,18 @@ def reset_shared_module_state():
     with metrics._lock:
         metrics._request_count.clear()
         metrics._request_duration_sum.clear()
-        metrics._upload_count = 0
-        metrics._upload_errors = 0
     yield
     cached_get_s3_client.cache_clear()
+
+
+@pytest.fixture(autouse=True)
+def reset_services():
+    """Never let one test's injected services (fakes) leak into the next."""
+    from app.service import container
+
+    container.set_services(None)
+    yield
+    container.set_services(None)
 
 
 @pytest.fixture(autouse=True)

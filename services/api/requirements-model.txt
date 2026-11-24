@@ -1,0 +1,15 @@
+# Model stack for real generation, installed on top of requirements.lock:
+#   .venv/bin/pip install -r requirements-model.txt
+# Kept out of requirements.txt / requirements.lock on purpose: the API boots,
+# the unit tests and CI run without torch (repo/wan_pipeline.py imports it
+# lazily). Every line is a bounded window, not a floating lower bound, so a
+# fresh GPU host resolves a stack this sample was written against; widen a
+# bound only after re-running `pnpm gpu:preflight` and `pnpm test:live:gpu`.
+# On Linux x86_64, the default torch wheel from PyPI is the CUDA build.
+torch>=2.6,<2.16
+diffusers>=0.35,<0.44
+transformers>=4.51,<6
+accelerate>=1.6,<2
+ftfy>=6.2,<7
+sentencepiece>=0.2,<0.3
+numpy>=1.26,<3

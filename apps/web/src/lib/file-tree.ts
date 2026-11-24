@@ -1,4 +1,4 @@
-import type { FileMetadata } from "@vibe-coding-starter-kit/shared";
+import type { FileMetadata } from "@wan-video-generation-archive/shared";
 
 export interface TreeFolder {
   type: "folder";
@@ -17,7 +17,7 @@ export type TreeNode = TreeFolder | TreeFile;
 
 /**
  * Build a tree structure from a flat list of S3 keys.
- * e.g. ["uploads/a.jpg", "uploads/photos/b.png", "docs/c.pdf"]
+ * e.g. ["video/a.jpg", "video/photos/b.png", "docs/c.pdf"]
  * becomes a nested folder/file hierarchy.
  */
 export function buildFileTree(files: FileMetadata[]): TreeNode[] {

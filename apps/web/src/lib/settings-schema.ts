@@ -1,5 +1,6 @@
 import { z } from "zod";
 
+import { PROJECT_NAME_RE, SHARE_TTL_OPTIONS } from "@/lib/preferences";
 import { THEME_OPTIONS } from "@/lib/theme-preference";
 
 /**
@@ -7,24 +8,19 @@ import { THEME_OPTIONS } from "@/lib/theme-preference";
  *
  * Kept outside the component so the rules and their user-facing messages are
  * unit-tested without rendering the form. See `docs/features/settings.md`.
+ * The share lifetime is a string because the Select binds strings.
  */
 export const settingsSchema = z.object({
-  displayName: z
-    .string()
-    .min(2, "Display name must be at least 2 characters")
-    .max(50),
-  bio: z.string().max(160, "Bio must be 160 characters or fewer").optional(),
   theme: z.enum(THEME_OPTIONS),
-  defaultView: z.enum(["tree", "list", "grid"]),
-  emailOnUpload: z.boolean(),
-  warnNearQuota: z.boolean(),
-  quotaThreshold: z
+  defaultProject: z
     .string()
-    .regex(/^\d+$/, "Must be a number")
-    .refine((v) => {
-      const n = Number(v);
-      return n >= 50 && n <= 95;
-    }, "Must be between 50 and 95"),
+    .regex(
+      PROJECT_NAME_RE,
+      "Use lowercase letters, digits and hyphens, starting with a letter or digit"
+    ),
+  defaultShareTtl: z.enum(
+    SHARE_TTL_OPTIONS.map((o) => String(o.seconds)) as [string, ...string[]]
+  ),
 });
 
 export type SettingsValues = z.infer<typeof settingsSchema>;

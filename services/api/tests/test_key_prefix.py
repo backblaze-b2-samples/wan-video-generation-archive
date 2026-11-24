@@ -13,7 +13,7 @@ def _fake_metadata(key: str) -> FileMetadata:
     return FileMetadata(
         key=key,
         filename=key.rsplit("/", 1)[-1],
-        folder="uploads/",
+        folder="video/",
         size_bytes=1,
         size_human="1 B",
         content_type="text/plain",
@@ -24,7 +24,7 @@ def _fake_metadata(key: str) -> FileMetadata:
 
 @pytest.mark.asyncio
 async def test_key_outside_allowed_prefix_rejected(client, monkeypatch):
-    monkeypatch.setattr(settings, "allowed_key_prefix", "uploads/")
+    monkeypatch.setattr(settings, "allowed_key_prefix", "video/")
     monkeypatch.setattr(files_service, "get_file_metadata", _fake_metadata)
 
     resp = await client.get(
@@ -35,14 +35,14 @@ async def test_key_outside_allowed_prefix_rejected(client, monkeypatch):
 
 @pytest.mark.asyncio
 async def test_key_inside_allowed_prefix_allowed(client, monkeypatch):
-    monkeypatch.setattr(settings, "allowed_key_prefix", "uploads/")
+    monkeypatch.setattr(settings, "allowed_key_prefix", "video/")
     monkeypatch.setattr(files_service, "get_file_metadata", _fake_metadata)
 
     resp = await client.get(
-        "/files-by-key/metadata", params={"key": "uploads/a.txt"}
+        "/files-by-key/metadata", params={"key": "video/a.txt"}
     )
     assert resp.status_code == 200
-    assert resp.json()["key"] == "uploads/a.txt"
+    assert resp.json()["key"] == "video/a.txt"
 
 
 @pytest.mark.asyncio

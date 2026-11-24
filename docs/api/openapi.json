@@ -1,23 +1,357 @@
 {
   "components": {
     "schemas": {
-      "DailyUploadCount": {
-        "description": "One day's upload count, for the dashboard activity chart.",
+      "AgeJobRequest": {
         "properties": {
-          "date": {
-            "title": "Date",
+          "as_of": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Clock override; defaults to now. A future date previews aging.",
+            "title": "As Of"
+          },
+          "dry_run": {
+            "default": false,
+            "title": "Dry Run",
+            "type": "boolean"
+          },
+          "older_than_days": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Defaults to ARCHIVE_AFTER_DAYS (30).",
+            "title": "Older Than Days"
+          }
+        },
+        "title": "AgeJobRequest",
+        "type": "object"
+      },
+      "AgeJobResult": {
+        "properties": {
+          "as_of": {
+            "format": "date-time",
+            "title": "As Of",
             "type": "string"
           },
-          "uploads": {
-            "title": "Uploads",
+          "cutoff": {
+            "format": "date-time",
+            "title": "Cutoff",
+            "type": "string"
+          },
+          "dry_run": {
+            "title": "Dry Run",
+            "type": "boolean"
+          },
+          "kept_count": {
+            "title": "Kept Count",
+            "type": "integer"
+          },
+          "moved": {
+            "items": {
+              "$ref": "#/components/schemas/ArchiveMove"
+            },
+            "title": "Moved",
+            "type": "array"
+          },
+          "project": {
+            "title": "Project",
+            "type": "string"
+          }
+        },
+        "required": [
+          "project",
+          "as_of",
+          "cutoff",
+          "moved",
+          "kept_count",
+          "dry_run"
+        ],
+        "title": "AgeJobResult",
+        "type": "object"
+      },
+      "ArchiveMove": {
+        "properties": {
+          "clip_id": {
+            "title": "Clip Id",
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "from_key": {
+            "title": "From Key",
+            "type": "string"
+          },
+          "to_key": {
+            "title": "To Key",
+            "type": "string"
+          }
+        },
+        "required": [
+          "clip_id",
+          "from_key",
+          "to_key",
+          "created_at"
+        ],
+        "title": "ArchiveMove",
+        "type": "object"
+      },
+      "ClipList": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ClipRecord"
+            },
+            "title": "Items",
+            "type": "array"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "title": "ClipList",
+        "type": "object"
+      },
+      "ClipRecord": {
+        "description": "One manifest line: everything needed to explain and reproduce a clip.",
+        "properties": {
+          "ai_generated": {
+            "default": true,
+            "title": "Ai Generated",
+            "type": "boolean"
+          },
+          "ai_label": {
+            "default": "AI-generated",
+            "title": "Ai Label",
+            "type": "string"
+          },
+          "archived_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Archived At"
+          },
+          "clip_id": {
+            "title": "Clip Id",
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "device": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Device"
+          },
+          "diffusers_version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Diffusers Version"
+          },
+          "fps": {
+            "title": "Fps",
+            "type": "integer"
+          },
+          "generation_seconds": {
+            "title": "Generation Seconds",
+            "type": "number"
+          },
+          "guidance_scale": {
+            "title": "Guidance Scale",
+            "type": "number"
+          },
+          "height": {
+            "title": "Height",
+            "type": "integer"
+          },
+          "model": {
+            "title": "Model",
+            "type": "string"
+          },
+          "model_license": {
+            "title": "Model License",
+            "type": "string"
+          },
+          "model_revision": {
+            "title": "Model Revision",
+            "type": "string"
+          },
+          "negative_prompt": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Negative Prompt"
+          },
+          "num_frames": {
+            "title": "Num Frames",
+            "type": "integer"
+          },
+          "num_inference_steps": {
+            "title": "Num Inference Steps",
+            "type": "integer"
+          },
+          "output_key": {
+            "description": "Current key of the MP4, in whichever tier it sits.",
+            "title": "Output Key",
+            "type": "string"
+          },
+          "project": {
+            "title": "Project",
+            "type": "string"
+          },
+          "prompt": {
+            "title": "Prompt",
+            "type": "string"
+          },
+          "regenerated_from": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Regenerated From"
+          },
+          "schema_version": {
+            "default": 1,
+            "title": "Schema Version",
+            "type": "integer"
+          },
+          "seed": {
+            "title": "Seed",
+            "type": "integer"
+          },
+          "settings_key": {
+            "description": "Current key of the settings sidecar JSON.",
+            "title": "Settings Key",
+            "type": "string"
+          },
+          "sha256": {
+            "title": "Sha256",
+            "type": "string"
+          },
+          "size_bytes": {
+            "title": "Size Bytes",
+            "type": "integer"
+          },
+          "tier": {
+            "enum": [
+              "recent",
+              "archive"
+            ],
+            "title": "Tier",
+            "type": "string"
+          },
+          "torch_version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Torch Version"
+          },
+          "width": {
+            "title": "Width",
             "type": "integer"
           }
         },
         "required": [
-          "date",
-          "uploads"
+          "schema_version",
+          "clip_id",
+          "project",
+          "prompt",
+          "negative_prompt",
+          "seed",
+          "model",
+          "model_revision",
+          "model_license",
+          "diffusers_version",
+          "torch_version",
+          "device",
+          "width",
+          "height",
+          "num_frames",
+          "fps",
+          "num_inference_steps",
+          "guidance_scale",
+          "output_key",
+          "settings_key",
+          "tier",
+          "sha256",
+          "size_bytes",
+          "created_at",
+          "archived_at",
+          "ai_generated",
+          "ai_label",
+          "generation_seconds",
+          "regenerated_from"
         ],
-        "title": "DailyUploadCount",
+        "title": "ClipRecord",
+        "type": "object"
+      },
+      "DeleteClipResponse": {
+        "properties": {
+          "clip_id": {
+            "title": "Clip Id",
+            "type": "string"
+          },
+          "deleted_keys": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Deleted Keys",
+            "type": "array"
+          }
+        },
+        "required": [
+          "clip_id",
+          "deleted_keys"
+        ],
+        "title": "DeleteClipResponse",
         "type": "object"
       },
       "DeleteFileResponse": {
@@ -280,71 +614,6 @@
         "title": "FileMetadataDetail",
         "type": "object"
       },
-      "FileUploadResponse": {
-        "description": "The stored object as `POST /upload/verify` reports it back.",
-        "properties": {
-          "content_type": {
-            "title": "Content Type",
-            "type": "string"
-          },
-          "filename": {
-            "title": "Filename",
-            "type": "string"
-          },
-          "key": {
-            "title": "Key",
-            "type": "string"
-          },
-          "metadata": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/FileMetadataDetail"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "Rich metadata, when extraction succeeded for this type."
-          },
-          "size_bytes": {
-            "title": "Size Bytes",
-            "type": "integer"
-          },
-          "size_human": {
-            "title": "Size Human",
-            "type": "string"
-          },
-          "uploaded_at": {
-            "format": "date-time",
-            "title": "Uploaded At",
-            "type": "string"
-          },
-          "url": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "Public object URL when the bucket is public, else null.",
-            "title": "Url"
-          }
-        },
-        "required": [
-          "key",
-          "filename",
-          "size_bytes",
-          "size_human",
-          "content_type",
-          "uploaded_at",
-          "url",
-          "metadata"
-        ],
-        "title": "FileUploadResponse",
-        "type": "object"
-      },
       "FileUrlResponse": {
         "description": "A short-lived presigned GET for downloading or previewing one object.",
         "properties": {
@@ -358,6 +627,205 @@
           "url"
         ],
         "title": "FileUrlResponse",
+        "type": "object"
+      },
+      "GenerateClipRequest": {
+        "description": "Text-to-video request. Omitting `seed` picks a random one that is still recorded.",
+        "properties": {
+          "guidance_scale": {
+            "default": 5.0,
+            "maximum": 20.0,
+            "minimum": 0.0,
+            "title": "Guidance Scale",
+            "type": "number"
+          },
+          "model_id": {
+            "default": "wan2.2-ti2v-5b",
+            "title": "Model Id",
+            "type": "string"
+          },
+          "negative_prompt": {
+            "anyOf": [
+              {
+                "maxLength": 2000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Negative Prompt"
+          },
+          "num_frames": {
+            "default": 49,
+            "enum": [
+              17,
+              33,
+              49,
+              81,
+              121
+            ],
+            "title": "Num Frames",
+            "type": "integer"
+          },
+          "num_inference_steps": {
+            "default": 30,
+            "maximum": 100.0,
+            "minimum": 1.0,
+            "title": "Num Inference Steps",
+            "type": "integer"
+          },
+          "project": {
+            "default": "demo",
+            "pattern": "^[a-z0-9][a-z0-9-]{0,62}$",
+            "title": "Project",
+            "type": "string"
+          },
+          "prompt": {
+            "maxLength": 2000,
+            "minLength": 1,
+            "title": "Prompt",
+            "type": "string"
+          },
+          "resolution": {
+            "default": "480p",
+            "title": "Resolution",
+            "type": "string"
+          },
+          "seed": {
+            "anyOf": [
+              {
+                "maximum": 4294967295.0,
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Seed"
+          }
+        },
+        "required": [
+          "prompt"
+        ],
+        "title": "GenerateClipRequest",
+        "type": "object"
+      },
+      "GenerationJob": {
+        "properties": {
+          "clip_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Clip Id"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "finished_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Finished At"
+          },
+          "job_id": {
+            "title": "Job Id",
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "generate",
+              "regenerate"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "project": {
+            "title": "Project",
+            "type": "string"
+          },
+          "regenerated_from": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Regenerated From"
+          },
+          "started_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Started At"
+          },
+          "status": {
+            "enum": [
+              "queued",
+              "running",
+              "succeeded",
+              "failed"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "step": {
+            "title": "Step",
+            "type": "integer"
+          },
+          "total_steps": {
+            "title": "Total Steps",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "job_id",
+          "kind",
+          "status",
+          "project",
+          "step",
+          "total_steps",
+          "clip_id",
+          "regenerated_from",
+          "error",
+          "created_at",
+          "started_at",
+          "finished_at"
+        ],
+        "title": "GenerationJob",
         "type": "object"
       },
       "HTTPValidationError": {
@@ -394,55 +862,176 @@
         "title": "HealthStatus",
         "type": "object"
       },
-      "PresignUploadRequest": {
-        "description": "What the browser declares before uploading directly to B2.",
+      "ModelInfo": {
+        "description": "One pinned registry entry plus whether it is loaded on the GPU now.",
         "properties": {
-          "content_type": {
-            "title": "Content Type",
+          "default_guidance": {
+            "title": "Default Guidance",
+            "type": "number"
+          },
+          "default_steps": {
+            "title": "Default Steps",
+            "type": "integer"
+          },
+          "device": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Device of the loaded pipeline; null when not loaded.",
+            "title": "Device"
+          },
+          "fps": {
+            "title": "Fps",
+            "type": "integer"
+          },
+          "frame_options": {
+            "items": {
+              "type": "integer"
+            },
+            "title": "Frame Options",
+            "type": "array"
+          },
+          "hf_repo": {
+            "title": "Hf Repo",
             "type": "string"
           },
-          "filename": {
-            "title": "Filename",
+          "id": {
+            "title": "Id",
             "type": "string"
           },
-          "size_bytes": {
-            "title": "Size Bytes",
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "license": {
+            "title": "License",
+            "type": "string"
+          },
+          "loaded": {
+            "title": "Loaded",
+            "type": "boolean"
+          },
+          "resolutions": {
+            "items": {
+              "$ref": "#/components/schemas/ResolutionInfo"
+            },
+            "title": "Resolutions",
+            "type": "array"
+          },
+          "revision": {
+            "description": "Exact 40-hex Hugging Face commit the weights load from.",
+            "title": "Revision",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "label",
+          "hf_repo",
+          "revision",
+          "license",
+          "fps",
+          "resolutions",
+          "frame_options",
+          "default_steps",
+          "default_guidance",
+          "loaded",
+          "device"
+        ],
+        "title": "ModelInfo",
+        "type": "object"
+      },
+      "ProjectSummary": {
+        "properties": {
+          "archive_count": {
+            "title": "Archive Count",
+            "type": "integer"
+          },
+          "clip_count": {
+            "title": "Clip Count",
+            "type": "integer"
+          },
+          "last_generated_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Generated At"
+          },
+          "manifest_key": {
+            "title": "Manifest Key",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "recent_count": {
+            "title": "Recent Count",
             "type": "integer"
           }
         },
         "required": [
-          "filename",
-          "content_type",
-          "size_bytes"
+          "name",
+          "clip_count",
+          "recent_count",
+          "archive_count",
+          "manifest_key",
+          "last_generated_at"
         ],
-        "title": "PresignUploadRequest",
+        "title": "ProjectSummary",
         "type": "object"
       },
-      "PresignUploadResponse": {
-        "description": "A short-lived presigned PUT the browser uploads to, plus the exact\nheaders it must send. `Content-Length` and `content-type` are signed into\nthe URL, so B2 rejects a body of any other size or type.",
+      "ResolutionInfo": {
         "properties": {
-          "content_type": {
-            "title": "Content Type",
-            "type": "string"
-          },
-          "expires_in": {
-            "title": "Expires In",
+          "height": {
+            "title": "Height",
             "type": "integer"
           },
-          "headers": {
-            "additionalProperties": {
-              "type": "string"
-            },
-            "description": "Signed into the URL, so the browser must send them verbatim \u2014 B2 answers a mismatch with 403.",
-            "title": "Headers",
-            "type": "object"
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "width": {
+            "title": "Width",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "name",
+          "width",
+          "height"
+        ],
+        "title": "ResolutionInfo",
+        "type": "object"
+      },
+      "ShareLink": {
+        "properties": {
+          "expires_at": {
+            "format": "date-time",
+            "title": "Expires At",
+            "type": "string"
           },
           "key": {
             "title": "Key",
             "type": "string"
           },
-          "method": {
-            "title": "Method",
+          "tier": {
+            "enum": [
+              "recent",
+              "archive"
+            ],
+            "title": "Tier",
             "type": "string"
           },
           "url": {
@@ -451,18 +1040,34 @@
           }
         },
         "required": [
-          "key",
           "url",
-          "method",
-          "content_type",
-          "headers",
-          "expires_in"
+          "expires_at",
+          "key",
+          "tier"
         ],
-        "title": "PresignUploadResponse",
+        "title": "ShareLink",
+        "type": "object"
+      },
+      "ShareRequest": {
+        "properties": {
+          "expires_in_seconds": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Link lifetime; defaults to SHARE_LINK_TTL_SECONDS, clamped to 60..604800.",
+            "title": "Expires In Seconds"
+          }
+        },
+        "title": "ShareRequest",
         "type": "object"
       },
       "UploadStats": {
-        "description": "Aggregate bucket figures behind the dashboard stat cards.",
+        "description": "Aggregate whole-bucket figures (object count, size, downloads).",
         "properties": {
           "total_downloads": {
             "title": "Total Downloads",
@@ -534,30 +1139,161 @@
         ],
         "title": "ValidationError",
         "type": "object"
-      },
-      "VerifyUploadRequest": {
-        "description": "Sent after the direct PUT so the API can inspect the stored object.",
-        "properties": {
-          "key": {
-            "title": "Key",
-            "type": "string"
-          }
-        },
-        "required": [
-          "key"
-        ],
-        "title": "VerifyUploadRequest",
-        "type": "object"
       }
     }
   },
   "info": {
-    "description": "Local API for the Vibe Coding Starter Kit template, providing file upload and management backed by Backblaze B2. This contract documents the template's local API, not a hosted public endpoint.",
-    "title": "Vibe Coding Starter Kit API",
+    "description": "Local API for the Wan Video Generation Archive sample: generates short clips with an open Wan video model, records each one in a per-project manifest, archives clips by age and shares them through expiring links, all in Backblaze B2. This contract documents the sample's local API, not a hosted public endpoint.",
+    "title": "Wan Video Generation Archive API",
     "version": "0.1.0"
   },
   "openapi": "3.1.0",
   "paths": {
+    "/clips": {
+      "get": {
+        "description": "Manifest entries across projects (or one), newest first; `q` matches prompt or id.",
+        "operationId": "list_clips_clips_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "project",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Project"
+            }
+          },
+          {
+            "in": "query",
+            "name": "tier",
+            "required": false,
+            "schema": {
+              "default": "all",
+              "enum": [
+                "recent",
+                "archive",
+                "all"
+              ],
+              "title": "Tier",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "q",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Q"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ClipList"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "description": "Value not allowed by the registry or key layout"
+          },
+          "404": {
+            "description": "Project or clip not found"
+          },
+          "409": {
+            "description": "Manifest entry not in the pinned registry"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          },
+          "502": {
+            "description": "Storage request failed"
+          }
+        },
+        "summary": "List Clips",
+        "tags": [
+          "clips"
+        ]
+      },
+      "post": {
+        "description": "Queue a text-to-video generation. Poll /jobs/{job_id} for progress.",
+        "operationId": "generate_clip_clips_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GenerateClipRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GenerationJob"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "description": "Value not allowed by the registry or key layout"
+          },
+          "404": {
+            "description": "Project or clip not found"
+          },
+          "409": {
+            "description": "Manifest entry not in the pinned registry"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          },
+          "502": {
+            "description": "Storage request failed"
+          }
+        },
+        "summary": "Generate Clip",
+        "tags": [
+          "clips"
+        ]
+      }
+    },
     "/files": {
       "get": {
         "operationId": "list_files_endpoint_files_get",
@@ -848,53 +1584,6 @@
         ]
       }
     },
-    "/files/stats/activity": {
-      "get": {
-        "operationId": "upload_activity_endpoint_files_stats_activity_get",
-        "parameters": [
-          {
-            "in": "query",
-            "name": "days",
-            "required": false,
-            "schema": {
-              "default": 7,
-              "title": "Days",
-              "type": "integer"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "items": {
-                    "$ref": "#/components/schemas/DailyUploadCount"
-                  },
-                  "title": "Response Upload Activity Endpoint Files Stats Activity Get",
-                  "type": "array"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Upload Activity Endpoint",
-        "tags": [
-          "files"
-        ]
-      }
-    },
     "/files/{key}": {
       "delete": {
         "operationId": "delete_file_endpoint_files__key__delete",
@@ -1083,6 +1772,77 @@
         ]
       }
     },
+    "/jobs": {
+      "get": {
+        "description": "Generation jobs held in memory by this API process, newest first.",
+        "operationId": "list_jobs_jobs_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/GenerationJob"
+                  },
+                  "title": "Response List Jobs Jobs Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "List Jobs",
+        "tags": [
+          "jobs"
+        ]
+      }
+    },
+    "/jobs/{job_id}": {
+      "get": {
+        "operationId": "get_job_jobs__job_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "job_id",
+            "required": true,
+            "schema": {
+              "title": "Job Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GenerationJob"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "description": "Unknown job id"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Job",
+        "tags": [
+          "jobs"
+        ]
+      }
+    },
     "/metrics": {
       "get": {
         "operationId": "metrics_metrics_get",
@@ -1102,57 +1862,78 @@
         ]
       }
     },
-    "/upload/presign": {
-      "post": {
-        "description": "Validate a declared upload and hand back a presigned PUT.\n\nThe browser uploads the bytes straight to B2 with the returned URL, so they\nnever traverse this Function \u2014 that is what lifts Vercel's ~4.5 MB payload\nceiling. Size and content-type are signed into the URL (see the service).",
-        "operationId": "presign_upload_upload_presign_post",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/PresignUploadRequest"
-              }
-            }
-          },
-          "required": true
-        },
+    "/models": {
+      "get": {
+        "description": "The pinned model registry and which entry is loaded on the device now.",
+        "operationId": "list_models_models_get",
         "responses": {
           "200": {
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/PresignUploadResponse"
+                  "items": {
+                    "$ref": "#/components/schemas/ModelInfo"
+                  },
+                  "title": "Response List Models Models Get",
+                  "type": "array"
                 }
               }
             },
             "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
           }
         },
-        "summary": "Presign Upload",
+        "summary": "List Models",
         "tags": [
-          "upload"
+          "models"
         ]
       }
     },
-    "/upload/verify": {
+    "/projects": {
+      "get": {
+        "description": "Every project that has a manifest under video/manifests/.",
+        "operationId": "list_projects_projects_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ProjectSummary"
+                  },
+                  "title": "Response List Projects Projects Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "List Projects",
+        "tags": [
+          "projects"
+        ]
+      }
+    },
+    "/projects/{project}/archive": {
       "post": {
-        "description": "Confirm an object just uploaded directly to B2 is valid and visible.",
-        "operationId": "verify_upload_route_upload_verify_post",
+        "description": "Move clips older than N days to video/archive/ and rewrite their manifest keys.",
+        "operationId": "age_project_projects__project__archive_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project",
+            "required": true,
+            "schema": {
+              "title": "Project",
+              "type": "string"
+            }
+          }
+        ],
         "requestBody": {
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/VerifyUploadRequest"
+                "$ref": "#/components/schemas/AgeJobRequest"
               }
             }
           },
@@ -1163,11 +1944,20 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/FileUploadResponse"
+                  "$ref": "#/components/schemas/AgeJobResult"
                 }
               }
             },
             "description": "Successful Response"
+          },
+          "400": {
+            "description": "Value not allowed by the registry or key layout"
+          },
+          "404": {
+            "description": "Project or clip not found"
+          },
+          "409": {
+            "description": "Manifest entry not in the pinned registry"
           },
           "422": {
             "content": {
@@ -1178,11 +1968,277 @@
               }
             },
             "description": "Validation Error"
+          },
+          "502": {
+            "description": "Storage request failed"
           }
         },
-        "summary": "Verify Upload Route",
+        "summary": "Age Project",
         "tags": [
-          "upload"
+          "projects"
+        ]
+      }
+    },
+    "/projects/{project}/clips/{clip_id}": {
+      "delete": {
+        "description": "Delete the MP4 and sidecar, then remove the manifest line.",
+        "operationId": "delete_clip_projects__project__clips__clip_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project",
+            "required": true,
+            "schema": {
+              "title": "Project",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "clip_id",
+            "required": true,
+            "schema": {
+              "title": "Clip Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeleteClipResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "description": "Value not allowed by the registry or key layout"
+          },
+          "404": {
+            "description": "Project or clip not found"
+          },
+          "409": {
+            "description": "Manifest entry not in the pinned registry"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          },
+          "502": {
+            "description": "Storage request failed"
+          }
+        },
+        "summary": "Delete Clip",
+        "tags": [
+          "clips"
+        ]
+      },
+      "get": {
+        "operationId": "get_clip_projects__project__clips__clip_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project",
+            "required": true,
+            "schema": {
+              "title": "Project",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "clip_id",
+            "required": true,
+            "schema": {
+              "title": "Clip Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ClipRecord"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "description": "Value not allowed by the registry or key layout"
+          },
+          "404": {
+            "description": "Project or clip not found"
+          },
+          "409": {
+            "description": "Manifest entry not in the pinned registry"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          },
+          "502": {
+            "description": "Storage request failed"
+          }
+        },
+        "summary": "Get Clip",
+        "tags": [
+          "clips"
+        ]
+      }
+    },
+    "/projects/{project}/clips/{clip_id}/regenerate": {
+      "post": {
+        "description": "Re-run a clip from its manifest prompt, seed, model and revision.",
+        "operationId": "regenerate_clip_projects__project__clips__clip_id__regenerate_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project",
+            "required": true,
+            "schema": {
+              "title": "Project",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "clip_id",
+            "required": true,
+            "schema": {
+              "title": "Clip Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GenerationJob"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "description": "Value not allowed by the registry or key layout"
+          },
+          "404": {
+            "description": "Project or clip not found"
+          },
+          "409": {
+            "description": "Manifest entry not in the pinned registry"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          },
+          "502": {
+            "description": "Storage request failed"
+          }
+        },
+        "summary": "Regenerate Clip",
+        "tags": [
+          "clips"
+        ]
+      }
+    },
+    "/projects/{project}/clips/{clip_id}/share": {
+      "post": {
+        "description": "Expiring presigned GET (inline video/mp4) for a recent or archived clip.",
+        "operationId": "share_clip_projects__project__clips__clip_id__share_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project",
+            "required": true,
+            "schema": {
+              "title": "Project",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "clip_id",
+            "required": true,
+            "schema": {
+              "title": "Clip Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ShareRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ShareLink"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "description": "Value not allowed by the registry or key layout"
+          },
+          "404": {
+            "description": "Project or clip not found"
+          },
+          "409": {
+            "description": "Manifest entry not in the pinned registry"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          },
+          "502": {
+            "description": "Storage request failed"
+          }
+        },
+        "summary": "Share Clip",
+        "tags": [
+          "clips"
         ]
       }
     }

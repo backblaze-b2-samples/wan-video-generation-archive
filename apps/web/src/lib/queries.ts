@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect } from "react";
 import {
   useMutation,
   useQuery,
@@ -8,27 +9,46 @@ import {
 } from "@tanstack/react-query";
 import {
   ApiError,
+  ageProject,
+  deleteClip,
   deleteFile,
+  generateClip,
+  getClip,
+  getClips,
   getDownloadUrl,
   getFileDetail,
   getFiles,
   getFileStats,
   getHealth,
+  getJob,
+  getJobs,
+  getModels,
   getPreviewUrl,
-  getUploadActivity,
+  getProjects,
+  regenerateClip,
+  shareClip,
 } from "@/lib/api-client";
 import type {
+  AgeJobRequest,
+  AgeJobResult,
+  ClipList,
+  ClipRecord,
   FileMetadata,
   FileMetadataDetail,
   FileUrlResponse,
-} from "@vibe-coding-starter-kit/shared";
+  GenerateClipRequest,
+  GenerationJob,
+  ModelInfo,
+  ProjectSummary,
+  ShareLink,
+} from "@wan-video-generation-archive/shared";
 import { qk } from "@/lib/generated/query-keys";
 
 // Query keys are GENERATED from the API contract (`pnpm gen:api`) and their
 // hierarchy is declared in `scripts/gen/api-gen.config.json`, so invalidating
 // a parent key still reaches its children and no hook can invent a key the API
-// cannot answer. Re-exported here because this module is the data layer's
-// public surface: components and tests import `qk` from `@/lib/queries`.
+// cannot answer. Path parameters (project, clip id, job id) are appended to the
+// generated key, so `qk.clips()`'s parent segment still covers every clip.
 //
 // The caching policy below — staleTime, refetchInterval, retry, `enabled`
 // gating, the query-vs-mutation choice, and the cache surgery in
@@ -37,6 +57,9 @@ import { qk } from "@/lib/generated/query-keys";
 export { qk };
 
 export type Health = Awaited<ReturnType<typeof getHealth>>;
+
+/** How often an unfinished generation job is polled. */
+export const JOB_POLL_MS = 1_500;
 
 /**
  * Gate a query on something being open/visible. Deliberately the only option we
@@ -47,6 +70,12 @@ export type Health = Awaited<ReturnType<typeof getHealth>>;
 export interface QueryGate {
   enabled?: boolean;
 }
+
+export function isJobActive(job: Pick<GenerationJob, "status"> | undefined): boolean {
+  return job?.status === "queued" || job?.status === "running";
+}
+
+// --- Bucket explorer ---------------------------------------------------------
 
 export function useFiles(prefix = "", limit = 100, { enabled = true }: QueryGate = {}) {
   return useQuery<FileMetadata[], ApiError>({
@@ -64,13 +93,6 @@ export function useFileStats({ enabled = true }: QueryGate = {}) {
   });
 }
 
-export function useUploadActivity(days = 7) {
-  return useQuery({
-    queryKey: qk.uploadActivity(days),
-    queryFn: () => getUploadActivity(days),
-  });
-}
-
 // Presigned preview URL — only fetched when `enabled` is true (e.g., when
 // the dialog opens for a specific file). Kept short-lived (60s) because
 // the URL itself has a presigned expiry and is cheap to regenerate.
@@ -85,8 +107,7 @@ export function usePreviewUrl(key: string | undefined, enabled: boolean) {
 
 // Rich metadata for an already-stored file. The server recomputes it on demand
 // (a full object download), so it's only fetched when `enabled` — i.e. the
-// preview dialog is open AND the user expands "Detailed metadata". Kept
-// short-lived like the preview URL; cheap correctness under key overwrites.
+// preview dialog is open AND the user expands "Detailed metadata".
 export function useFileDetail(key: string | undefined, enabled: boolean) {
   return useQuery<FileMetadataDetail, ApiError>({
     queryKey: qk.detail(key ?? ""),
@@ -112,13 +133,8 @@ export function useHealth() {
 
 /**
  * Drop a deleted object from every cached file list, plus its own cached
- * preview/detail entries.
- *
- * Invalidation alone is not enough: the refetch re-lists the whole bucket and
- * took 5-6s in practice, so the success toast fired while the row was still
- * listed — and using that stale row's Preview 404'd. Editing the cache makes
- * the row disappear with the toast; the invalidation that follows still
- * reconciles against the server.
+ * preview/detail entries, so the row disappears with the toast; the
+ * invalidation that follows still reconciles against the server.
  *
  * Exported for tests — the mutation below is its only production caller.
  */
@@ -135,36 +151,143 @@ export function dropDeletedFileFromCache(qc: QueryClient, fileKey: string) {
 }
 
 /**
- * Fetch a download URL for one file.
- *
- * A mutation, not a query: it has a server side effect (it bumps the download
- * counter) and it must never be cached or replayed. Being a mutation is also
- * what gives the UI an honest pending state — the old code awaited the presign
- * inside a plain click handler, so a slow round trip left the screen completely
- * unchanged and a user could not tell a working download from a dead button.
- *
- * The caller performs the navigation (see `lib/browser-download.ts`) and gets
- * `isPending` / `variables` for the pending row.
+ * Fetch a download URL for one file. A mutation, not a query: it bumps the
+ * server's download counter and must never be cached or replayed.
  */
 export function useDownloadUrl() {
   const qc = useQueryClient();
   return useMutation<FileUrlResponse, ApiError, FileMetadata>({
     mutationFn: (file) => getDownloadUrl(file.key),
-    // The server counted a download, so the dashboard's "Total Downloads" is
-    // now stale. Cheap: /files/stats reads a cached bucket listing.
     onSuccess: () => qc.invalidateQueries({ queryKey: qk.stats() }),
   });
 }
 
 export function useDeleteFile() {
   const qc = useQueryClient();
-  return useMutation({
+  return useMutation<unknown, ApiError, string>({
     mutationFn: (fileKey: string) => deleteFile(fileKey),
     onSuccess: (_data, fileKey) => {
-      // Remove the row immediately, then reconcile everything (lists, stats,
-      // activity) against the server in the background.
       dropDeletedFileFromCache(qc, fileKey);
       qc.invalidateQueries({ queryKey: qk.all });
+    },
+  });
+}
+
+// --- Models, projects, clips -------------------------------------------------
+
+export function useModels() {
+  return useQuery<ModelInfo[], ApiError>({
+    queryKey: qk.models(),
+    queryFn: getModels,
+    staleTime: 30_000,
+  });
+}
+
+export function useProjects() {
+  return useQuery<ProjectSummary[], ApiError>({
+    queryKey: qk.projects(),
+    queryFn: getProjects,
+  });
+}
+
+export function useClips(project?: string, tier = "all", q?: string) {
+  return useQuery<ClipList, ApiError>({
+    queryKey: qk.clips(project, tier, q),
+    queryFn: () => getClips(project, tier, q),
+  });
+}
+
+export function useClip(project: string | undefined, clipId: string | undefined) {
+  return useQuery<ClipRecord, ApiError>({
+    queryKey: [...qk.clip(), project, clipId],
+    queryFn: () => getClip(project as string, clipId as string),
+    enabled: !!project && !!clipId,
+    retry: (count, error) => !error.isNotFound && count < 2,
+  });
+}
+
+/** Everything a stored clip appears in: lists, detail, projects, the explorer. */
+function invalidateClipViews(qc: QueryClient) {
+  qc.invalidateQueries({ queryKey: [...qk.all, "clips"] });
+  qc.invalidateQueries({ queryKey: qk.projects() });
+  qc.invalidateQueries({ queryKey: [...qk.all, "files"] });
+  qc.invalidateQueries({ queryKey: qk.stats() });
+}
+
+// --- Jobs -------------------------------------------------------------------
+
+export function useJobs() {
+  return useQuery<GenerationJob[], ApiError>({
+    queryKey: qk.jobs(),
+    queryFn: getJobs,
+    refetchInterval: (query) =>
+      (query.state.data ?? []).some(isJobActive) ? JOB_POLL_MS * 2 : false,
+  });
+}
+
+/**
+ * Poll one job until it finishes. When it succeeds the new clip exists, so the
+ * clip views are invalidated once.
+ */
+export function useJob(jobId: string | undefined) {
+  const qc = useQueryClient();
+  const query = useQuery<GenerationJob, ApiError>({
+    queryKey: [...qk.job(), jobId],
+    queryFn: () => getJob(jobId as string),
+    enabled: !!jobId,
+    refetchInterval: (q) => (isJobActive(q.state.data) || !q.state.data ? JOB_POLL_MS : false),
+  });
+  const status = query.data?.status;
+  useEffect(() => {
+    if (status === "succeeded") invalidateClipViews(qc);
+  }, [qc, status]);
+  return query;
+}
+
+// --- Mutations --------------------------------------------------------------
+
+export function useGenerateClip() {
+  const qc = useQueryClient();
+  return useMutation<GenerationJob, ApiError, GenerateClipRequest>({
+    mutationFn: generateClip,
+    onSuccess: () => qc.invalidateQueries({ queryKey: qk.jobs() }),
+  });
+}
+
+export function useRegenerateClip() {
+  const qc = useQueryClient();
+  return useMutation<GenerationJob, ApiError, { project: string; clipId: string }>({
+    mutationFn: ({ project, clipId }) => regenerateClip(project, clipId),
+    onSuccess: () => qc.invalidateQueries({ queryKey: qk.jobs() }),
+  });
+}
+
+export function useDeleteClip() {
+  const qc = useQueryClient();
+  return useMutation<unknown, ApiError, { project: string; clipId: string }>({
+    mutationFn: ({ project, clipId }) => deleteClip(project, clipId),
+    onSuccess: () => invalidateClipViews(qc),
+  });
+}
+
+/** A share link is minted per click (it expires), so it is a mutation, never cached. */
+export function useShareClip() {
+  return useMutation<
+    ShareLink,
+    ApiError,
+    { project: string; clipId: string; expiresInSeconds: number }
+  >({
+    mutationFn: ({ project, clipId, expiresInSeconds }) =>
+      shareClip(project, clipId, expiresInSeconds),
+  });
+}
+
+export function useAgeProject() {
+  const qc = useQueryClient();
+  return useMutation<AgeJobResult, ApiError, { project: string; body: AgeJobRequest }>({
+    mutationFn: ({ project, body }) => ageProject(project, body),
+    onSuccess: (result) => {
+      if (!result.dry_run) invalidateClipViews(qc);
     },
   });
 }

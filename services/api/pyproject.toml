@@ -28,4 +28,7 @@ quote-style = "double"
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 asyncio_mode = "auto"
-markers = ["live: opt-in tests that can contact a real external service"]
+markers = [
+    "live: opt-in tests that can contact a real external service",
+    "gpu: needs the model stack (requirements-model.txt) and, for TI2V-5B, a CUDA GPU",
+]

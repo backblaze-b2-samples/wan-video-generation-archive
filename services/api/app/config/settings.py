@@ -38,7 +38,7 @@ class Settings(BaseSettings):
     # app-config.ts, so this is the backend's declaration of the same slug:
     # keep it equal to the package name, and derive identifiers from it rather
     # than writing a second name a rename sweep has to know about.
-    app_slug: str = "vibe-coding-starter-kit"
+    app_slug: str = "wan-video-generation-archive"
 
     api_port: int = 8000
     # Interactive API docs (/docs, /redoc, /openapi.json). On by default for
@@ -55,17 +55,29 @@ class Settings(BaseSettings):
     # listing each one. NEVER ship this to production.
     api_cors_origin_regex: str = ""
 
-    # Upload limits
+    # Ceiling for the explorer's on-demand metadata recompute (it buffers the
+    # whole object in memory). Generated clips sit far below it.
     max_file_size: int = 100 * 1024 * 1024  # 100MB
-    # TTL for the presigned PUT the browser uploads directly to B2 with. Long
-    # enough for a big file on a slow link, short enough that a leaked URL is a
-    # narrow, single-key, single-size window.
-    presign_upload_expiry_seconds: int = 900  # 15 minutes
+
+    # --- Wan video generation (app/config/models.py holds the pinned registry) ---
+    # Which registry entry new clips use by default.
+    wan_model: str = "wan2.2-ti2v-5b"
+    # "auto" picks CUDA, then Apple MPS, then CPU. Force one with cuda|mps|cpu.
+    wan_device: str = "auto"
+    # "auto" turns model CPU offload on when the CUDA device has < 40 GB VRAM.
+    wan_cpu_offload: str = "auto"
+
+    # --- Clip lifecycle ---
+    # The age job moves a clip to the archive tier once it is this many days old.
+    archive_after_days: int = 30
+    # Default lifetime of a share link. Requests are clamped to 60..604800 s
+    # (S3 presigned URLs cannot outlive 7 days).
+    share_link_ttl_seconds: int = 3600
 
     # Optional confinement for key-addressed reads/deletes. Empty by default so
     # the by-key routes accept any key shape (they deliberately support nested
     # folders and reserved-word segments). Point a fork at a bucket shared with
-    # other data? Set to e.g. "uploads/" to restrict all key ops to app uploads.
+    # other data? Set to e.g. "video/" to restrict all key ops to app objects.
     allowed_key_prefix: str = ""
 
     # Full-bucket listing cache (repo/list_cache.py). Both /files and
@@ -73,7 +85,7 @@ class Settings(BaseSettings):
     # ~8-20s, so one scan is shared. Entries older than the TTL are still
     # served *immediately* while a background thread refreshes them
     # (stale-while-revalidate), so only the very first scan can make a user
-    # wait. Uploads and deletes invalidate the cache outright, so the app's own
+    # wait. Clip writes and deletes invalidate the cache outright, so the app's own
     # writes are never served stale — only bucket changes made elsewhere can lag
     # by up to this TTL.
     list_cache_ttl_seconds: float = 300.0
@@ -85,8 +97,8 @@ class Settings(BaseSettings):
     # documented in docs/RELIABILITY.md; horizontal scaling needs a shared
     # store (e.g. Redis). Writes/downloads get the tighter cap.
     rate_limit_per_minute: int = 120
-    # Covers uploads, deletes, downloads and previews — kept generous enough
-    # that a normal browsing/upload session doesn't trip it.
+    # Covers generation requests, deletes, shares, downloads and previews —
+    # kept generous enough that a normal browsing session doesn't trip it.
     rate_limit_write_per_minute: int = 60
 
     # Small durable counters (downloads, etc). Relative paths resolve against

@@ -1,14 +1,21 @@
 import type {
-  DailyUploadCount,
+  AgeJobRequest,
+  AgeJobResult,
+  ClipList,
+  ClipRecord,
+  DeleteClipResponse,
   DeleteFileResponse,
   FileMetadata,
   FileMetadataDetail,
-  FileUploadResponse,
   FileUrlResponse,
+  GenerateClipRequest,
+  GenerationJob,
   HealthStatus,
-  PresignUploadResponse,
+  ModelInfo,
+  ProjectSummary,
+  ShareLink,
   UploadStats,
-} from "@vibe-coding-starter-kit/shared";
+} from "@wan-video-generation-archive/shared";
 
 import { API_CLIENT_ROUTES } from "./generated/api-routes";
 
@@ -19,8 +26,8 @@ import { API_CLIENT_ROUTES } from "./generated/api-routes";
 // registry moved behind a generator.
 //
 // Everything else in this file is hand-written on purpose — error policy, base
-// URL resolution, the legacy-route fallback, the CORS diagnostics and the XHR
-// upload transport are per-app judgement the contract does not describe. See
+// URL resolution, the legacy-route fallback and the CORS diagnostics are
+// per-app judgement the contract does not describe. See
 // `scripts/gen/api-gen.config.json` (`escapeHatch`).
 export { API_CLIENT_ROUTES };
 
@@ -74,32 +81,6 @@ function networkError(): ApiError {
   }
   return new ApiError(
     "Couldn't reach the API, or the server returned an error the browser blocked (CORS). Check the API logs.",
-    0,
-  );
-}
-
-/**
- * Build the status-0 ApiError for a failed browser→B2 PUT.
- *
- * Deliberately not `networkError()`: these bytes never touch the API, so
- * "check the API logs" sends the developer to the one place that looks fine —
- * the presign that produced this URL succeeded and logged a clean 200.
- *
- * On a deployed origin the overwhelmingly likely cause is that the *bucket's*
- * CORS does not allow that origin, so the browser blocks the PUT before it
- * leaves and XHR reports only a contentless `error` event. Local dev rarely
- * trips it because localhost origins are usually already allowed — which is
- * exactly why it first appears immediately after a deploy. Name the cause and
- * the remedy instead of leaving a mystery.
- */
-function storageNetworkError(): ApiError {
-  if (typeof navigator !== "undefined" && navigator.onLine === false) {
-    return new ApiError("You appear to be offline — check your connection", 0);
-  }
-  return new ApiError(
-    "Couldn't upload to B2 storage. If this app is deployed, the bucket's CORS " +
-      "must allow this origin — run services/api/scripts/setup_b2_cors.py " +
-      "--origin <your origin>.",
     0,
   );
 }
@@ -202,12 +183,6 @@ export async function getFileStats() {
   return apiFetch<UploadStats>(API_CLIENT_ROUTES.fileStats.path);
 }
 
-export async function getUploadActivity(days = 7) {
-  return apiFetch<DailyUploadCount[]>(
-    `${API_CLIENT_ROUTES.uploadActivity.path}?days=${days}`
-  );
-}
-
 export async function getFile(key: string) {
   return apiFetchWithLegacyFallback<FileMetadata>(
     `${API_CLIENT_ROUTES.fileByKeyMetadata.path}?${fileKeyQuery(key)}`,
@@ -258,84 +233,89 @@ export async function deleteFile(key: string) {
   );
 }
 
-/**
- * Upload a file directly to B2 in three steps: presign (the API validates the
- * declared file and signs a short-lived PUT), a direct browser→B2 PUT, then
- * verify (the API inspects the stored object). The bytes never pass through the
- * API, which is what removes Vercel's ~4.5 MB Function payload ceiling.
- *
- * The `(file, onProgress) => FileUploadResponse` signature is unchanged, so the
- * upload queue and progress UI don't care that the transport changed. Progress
- * tracks the browser→B2 leg; when it reaches 100% the queue enters its
- * server-side phase (see `upload-status`) while `verify` runs.
- */
-export async function uploadFile(
-  file: File,
-  onProgress?: (percent: number) => void
-): Promise<FileUploadResponse> {
-  const presign = await apiFetch<PresignUploadResponse>(
-    API_CLIENT_ROUTES.uploadPresign.path,
-    {
-      method: API_CLIENT_ROUTES.uploadPresign.method.toUpperCase(),
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        filename: file.name,
-        content_type: file.type,
-        size_bytes: file.size,
-      }),
+// --- Clips, projects, jobs ---------------------------------------------------
+
+/** Substitute `{name}` placeholders in a registry path with encoded values. */
+export function fillPath(path: string, params: Record<string, string>): string {
+  return path.replace(/\{(\w+)\}/g, (_m, name: string) => {
+    const value = params[name];
+    if (value === undefined || value === "") {
+      throw new ApiError(`Missing path parameter: ${name}`, 400);
     }
-  );
-
-  await putFileToStorage(presign, file, onProgress);
-
-  return apiFetch<FileUploadResponse>(API_CLIENT_ROUTES.uploadVerify.path, {
-    method: API_CLIENT_ROUTES.uploadVerify.method.toUpperCase(),
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ key: presign.key }),
+    return encodeURIComponent(value);
   });
 }
 
-/**
- * PUT the raw file bytes to the presigned B2 URL. XHR (not fetch) because only
- * XHR exposes upload progress. The signed URL binds the exact size and
- * content-type, so `presign.headers` must be sent verbatim — B2 answers a
- * mismatch with 403.
- */
-function putFileToStorage(
-  presign: PresignUploadResponse,
-  file: File,
-  onProgress?: (percent: number) => void
-): Promise<void> {
-  return new Promise((resolve, reject) => {
-    const xhr = new XMLHttpRequest();
+function jsonInit(method: string, body?: unknown): RequestInit {
+  return {
+    method: method.toUpperCase(),
+    headers: { "Content-Type": "application/json" },
+    body: body === undefined ? undefined : JSON.stringify(body),
+  };
+}
 
-    xhr.upload.addEventListener("progress", (e) => {
-      if (e.lengthComputable && onProgress) {
-        onProgress(Math.round((e.loaded / e.total) * 100));
-      }
-    });
+export async function getModels() {
+  return apiFetch<ModelInfo[]>(API_CLIENT_ROUTES.models.path);
+}
 
-    xhr.addEventListener("load", () => {
-      if (xhr.status >= 200 && xhr.status < 300) {
-        resolve();
-      } else {
-        // B2 errors are XML, not JSON — surface a stable message rather than
-        // the raw body (a 403 here means the signed size/type was violated).
-        reject(
-          new ApiError(`Upload to storage failed (${xhr.status})`, xhr.status)
-        );
-      }
-    });
+export async function getProjects() {
+  return apiFetch<ProjectSummary[]>(API_CLIENT_ROUTES.projects.path);
+}
 
-    xhr.addEventListener("error", () => reject(storageNetworkError()));
-    xhr.addEventListener("abort", () =>
-      reject(new ApiError("Upload aborted", 0)),
-    );
+export async function getClips(project?: string, tier = "all", q?: string) {
+  const params = new URLSearchParams({ tier });
+  if (project) params.set("project", project);
+  if (q) params.set("q", q);
+  return apiFetch<ClipList>(`${API_CLIENT_ROUTES.clips.path}?${params}`);
+}
 
-    xhr.open(presign.method.toUpperCase(), presign.url);
-    for (const [name, value] of Object.entries(presign.headers)) {
-      xhr.setRequestHeader(name, value);
-    }
-    xhr.send(file);
-  });
+export async function getClip(project: string, clipId: string) {
+  return apiFetch<ClipRecord>(
+    fillPath(API_CLIENT_ROUTES.clip.path, { project, clip_id: clipId })
+  );
+}
+
+export async function generateClip(body: GenerateClipRequest) {
+  const route = API_CLIENT_ROUTES.generateClip;
+  return apiFetch<GenerationJob>(route.path, jsonInit(route.method, body));
+}
+
+export async function deleteClip(project: string, clipId: string) {
+  const route = API_CLIENT_ROUTES.deleteClip;
+  return apiFetch<DeleteClipResponse>(
+    fillPath(route.path, { project, clip_id: clipId }),
+    { method: route.method.toUpperCase() }
+  );
+}
+
+export async function shareClip(project: string, clipId: string, expiresInSeconds: number) {
+  const route = API_CLIENT_ROUTES.shareClip;
+  return apiFetch<ShareLink>(
+    fillPath(route.path, { project, clip_id: clipId }),
+    jsonInit(route.method, { expires_in_seconds: expiresInSeconds })
+  );
+}
+
+export async function regenerateClip(project: string, clipId: string) {
+  const route = API_CLIENT_ROUTES.regenerateClip;
+  return apiFetch<GenerationJob>(
+    fillPath(route.path, { project, clip_id: clipId }),
+    { method: route.method.toUpperCase() }
+  );
+}
+
+export async function ageProject(project: string, body: AgeJobRequest) {
+  const route = API_CLIENT_ROUTES.ageProject;
+  return apiFetch<AgeJobResult>(
+    fillPath(route.path, { project }),
+    jsonInit(route.method, body)
+  );
+}
+
+export async function getJobs() {
+  return apiFetch<GenerationJob[]>(API_CLIENT_ROUTES.jobs.path);
+}
+
+export async function getJob(jobId: string) {
+  return apiFetch<GenerationJob>(fillPath(API_CLIENT_ROUTES.job.path, { job_id: jobId }));
 }

@@ -102,3 +102,28 @@ def test_python_runtime_accepts_baseline_and_newer() -> None:
     )
 
     assert result.stdout.strip() == "false,true,true,false"
+
+
+MODEL_PATH = API_ROOT / "requirements-model.txt"
+BOUNDED_WINDOW = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]*>=[^,<\s]+,<[^,\s]+$")
+
+
+def test_model_requirements_are_bounded_windows() -> None:
+    """The ML stack pins a working window (lower AND upper bound) for every package."""
+    lines = non_comment_lines(MODEL_PATH)
+    names = {normalized_name(line) for line in lines}
+
+    assert {"torch", "diffusers", "transformers", "accelerate"} <= names
+    assert all(BOUNDED_WINDOW.fullmatch(line) for line in lines), lines
+    diffusers = next(line for line in lines if normalized_name(line) == "diffusers")
+    assert diffusers.startswith("diffusers>=0.35"), "WanPipeline TI2V-5B needs diffusers 0.35+"
+
+
+def test_model_stack_stays_out_of_the_api_lock() -> None:
+    """CI and the unit tests never install torch; the API lock must not pull it in."""
+    lock_names = {normalized_name(line) for line in non_comment_lines(LOCK_PATH)}
+    model_names = {normalized_name(line) for line in non_comment_lines(MODEL_PATH)}
+
+    assert not ({"torch", "diffusers", "transformers"} & lock_names)
+    assert not (model_names & {"imageio-ffmpeg"})
+    assert "imageio-ffmpeg" in lock_names

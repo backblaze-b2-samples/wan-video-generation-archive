@@ -11,6 +11,9 @@ pydantic-settings>=2.7.0
 boto3>=1.35.0
 Pillow>=13.0.0
 pypdf>=6.0.0
+# MP4 encoding + container tags via the bundled static ffmpeg (BSD-2-Clause wrapper;
+# the ffmpeg binary it ships is LGPL/GPL, see README "Licenses").
+imageio-ffmpeg>=0.5.0
 
 # Dev / quality
 ruff>=0.8.0

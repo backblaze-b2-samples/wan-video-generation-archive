@@ -66,7 +66,7 @@ async def test_download_not_found_returns_404(client, monkeypatch):
     """Download for a missing file returns 404 with detail."""
     monkeypatch.setattr(files_service, "get_file_metadata", lambda key: None)
 
-    response = await client.get("/files/uploads/missing.txt/download")
+    response = await client.get("/files/video/missing.txt/download")
     assert response.status_code == 404
     assert "not found" in response.json()["detail"].lower()
 
@@ -77,28 +77,17 @@ def test_traversal_keys_are_rejected():
 
     bad_keys = [
         "",
-        "uploads/../secret.txt",
+        "video/../secret.txt",
         "../etc/passwd",
         "uploads\\secret.txt",
-        "uploads/%2e%2e/secret",
-        "uploads/\x00null",
+        "video/%2e%2e/secret",
+        "video/\x00null",
     ]
     for bad in bad_keys:
         with pytest.raises(FileKeyError):
             validate_key(bad)
 
-    # Sanity: ordinary keys (including those outside uploads/) pass.
-    validate_key("uploads/file.txt")
+    # Sanity: ordinary keys (including those outside video/) pass.
+    validate_key("video/file.txt")
     validate_key("photos/2026/vacation.jpg")
     validate_key("readme.md")
-
-
-@pytest.mark.asyncio
-async def test_upload_empty_file_returns_400(client):
-    """Presigning an empty upload returns 400 with explanation."""
-    response = await client.post(
-        "/upload/presign",
-        json={"filename": "empty.txt", "content_type": "text/plain", "size_bytes": 0},
-    )
-    assert response.status_code == 400
-    assert "empty" in response.json()["detail"].lower()

@@ -1,85 +1,56 @@
 {
   "$schema": "../../scripts/gen/sample.schema.json",
   "schema_version": 1,
-  "name": "Vibe Coding Starter Kit",
-  "slug": "vibe-coding-starter-kit",
-  "package_scope": "@vibe-coding-starter-kit",
-  "purpose": "A well-engineered full-stack foundation — dashboard, drag-and-drop upload and a file browser — with Backblaze B2 storage already wired in, so builders skip the boilerplate loop.",
-  "tagline": "Stop wiring boilerplate and start building.",
-  "primary_entity": { "schema": "FileMetadata", "singular": "file", "plural": "files" },
+  "name": "Wan Video Generation Archive",
+  "slug": "wan-video-generation-archive",
+  "package_scope": "@wan-video-generation-archive",
+  "purpose": "Generate short videos with Wan2.2 TI2V-5B on one GPU and keep every clip in Backblaze B2 with its prompt, seed, pinned model revision and license, archived by age and shared through expiring links.",
+  "tagline": "Every generated clip stays findable, reproducible and labelled as it ages.",
+  "primary_entity": { "schema": "ClipRecord", "singular": "clip", "plural": "clips" },
   "features": [
-    {
-      "title": "File Upload",
-      "route": "/upload",
-      "doc": "docs/features/file-upload.md",
-      "summary": "drag-and-drop upload with real-time progress",
-      "workflow_heading": "Upload Files"
-    },
-    {
-      "title": "File Browser",
-      "route": "/files",
-      "doc": "docs/features/file-browser.md",
-      "summary": "list, preview, download, delete files",
-      "workflow_heading": "Browse and Manage Files"
-    },
-    {
-      "title": "Dashboard",
-      "route": "/",
-      "doc": "docs/features/dashboard.md",
-      "summary": "stats cards, upload chart, recent uploads",
-      "workflow_heading": "View Dashboard"
-    },
-    {
-      "title": "Metadata Extraction",
-      "route": null,
-      "doc": "docs/features/metadata-extraction.md",
-      "summary": "image dimensions, EXIF, PDF info, checksums"
-    },
-    {
-      "title": "Settings",
-      "route": "/settings",
-      "doc": "docs/features/settings.md",
-      "summary": "theme plus labelled demo preference fields",
-      "workflow_heading": "Change Preferences"
-    }
+    { "title": "Clip Generation", "route": "/generate", "doc": "docs/features/clip-generation.md", "summary": "Wan2.2 text-to-video on one GPU, labelled AI-generated", "workflow_heading": "Generate a Clip" },
+    { "title": "Clip Library", "route": "/", "doc": "docs/features/clip-library.md", "summary": "browse clips by project and tier with their manifest entries", "workflow_heading": "Find a Clip" },
+    { "title": "Prompt-and-Seed Manifest", "route": null, "doc": "docs/features/manifest.md", "summary": "per-project JSONL with prompt, seed, model revision, license and checksum" },
+    { "title": "Archive Age Job", "route": "/archive", "doc": "docs/features/archive-age-job.md", "summary": "move older clips to the archive prefix and update manifest keys", "workflow_heading": "Archive Older Clips" },
+    { "title": "Share Links", "route": null, "doc": "docs/features/share-links.md", "summary": "expiring presigned links for recent or archived clips" },
+    { "title": "Regenerate from Manifest", "route": null, "doc": "docs/features/regeneration.md", "summary": "re-run a clip from its recorded prompt, seed and revision" },
+    { "title": "Bucket Explorer", "route": "/files", "doc": "docs/features/file-browser.md", "summary": "browse, preview and download every object in the bucket", "workflow_heading": "Browse the Bucket" },
+    { "title": "Metadata Extraction", "route": null, "doc": "docs/features/metadata-extraction.md", "summary": "image dimensions, EXIF, PDF info, checksums in the explorer" },
+    { "title": "Settings", "route": "/settings", "doc": "docs/features/settings.md", "summary": "theme, default project and default share link lifetime", "workflow_heading": "Change Preferences" }
   ],
   "b2_surface": [
-    { "operation": "put_object", "why": "store an uploaded object" },
-    { "operation": "presigned PUT", "why": "the browser uploads bytes directly to B2, bypassing the Function payload cap" },
-    { "operation": "list_objects_v2", "why": "the shared full-bucket listing behind the file list and the stats cards" },
-    { "operation": "head_object", "why": "cheap per-key metadata, and the /health connectivity probe" },
-    { "operation": "get_object", "why": "re-read bytes to recompute rich metadata on demand" },
-    { "operation": "presigned GET", "why": "download and inline preview URLs" },
-    { "operation": "delete_object", "why": "remove an object" }
+    { "operation": "put_object", "why": "store a clip, its settings sidecar and the rewritten project manifest" },
+    { "operation": "get_object", "why": "read a project manifest or settings sidecar" },
+    { "operation": "head_object", "why": "verify an archive copy before removing the recent copy, and the /health probe" },
+    { "operation": "copy_object", "why": "move a clip from video/recent/ to video/archive/ keeping its AI-generated metadata" },
+    { "operation": "delete_object", "why": "drop the recent copy after a verified move, or delete a clip" },
+    { "operation": "list_objects_v2", "why": "list project manifests and back the full-bucket explorer" },
+    { "operation": "presigned GET", "why": "expiring share links and explorer downloads without a public bucket" }
   ],
-  "b2_key_prefix": "uploads/",
+  "b2_key_prefix": "video/",
   "stack": {
-    "web": "Next.js 16, React 19, Tailwind v4, shadcn/ui, TanStack Query, Recharts",
-    "api": "FastAPI, Python 3.12+, boto3, Pydantic v2, Pillow, pypdf",
+    "web": "Next.js 16, React 19, Tailwind v4, shadcn/ui, TanStack Query",
+    "api": "FastAPI, Python 3.12+, boto3, Pydantic v2, Diffusers, PyTorch, imageio-ffmpeg",
     "storage": "Backblaze B2 (S3-compatible API)",
     "package_manager": "pnpm workspaces"
   },
-  "deployment_targets": ["vercel", "railway"],
+  "deployment_targets": [],
   "env_vars": [
     { "name": "B2_APPLICATION_KEY_ID", "required": true, "secret": true, "note": "B2 application key ID (**keyID** in the B2 console)" },
-    { "name": "B2_APPLICATION_KEY", "required": true, "secret": true, "note": "B2 application key (**applicationKey**) — shown once at creation" },
+    { "name": "B2_APPLICATION_KEY", "required": true, "secret": true, "note": "B2 application key (**applicationKey**), shown once at creation" },
     { "name": "B2_BUCKET_NAME", "required": true, "secret": false, "note": "bucket unique name (**Bucket Unique Name** in the B2 console)" },
     { "name": "B2_REGION", "required": true, "secret": false, "note": "the region inside the bucket's **Endpoint** (`s3.<region>.backblazeb2.com`); the S3 endpoint is derived from it" },
-    { "name": "B2_PUBLIC_URL_BASE", "required": false, "secret": false, "note": "public object base URL, when the bucket is public" },
-    { "name": "NEXT_PUBLIC_API_URL", "required": false, "secret": false, "note": "separate-origin deploys only; Next.js inlines it at build time" }
+    { "name": "B2_PUBLIC_URL_BASE", "required": false, "secret": false, "note": "public object base URL, only when the bucket is public; share links never need it" },
+    { "name": "WAN_MODEL", "required": false, "secret": false, "note": "`wan2.2-ti2v-5b` (default) or `wan2.1-t2v-1.3b` for local development" },
+    { "name": "WAN_DEVICE", "required": false, "secret": false, "note": "`auto` (CUDA, then MPS, then CPU), `cuda`, `mps` or `cpu`" },
+    { "name": "WAN_CPU_OFFLOAD", "required": false, "secret": false, "note": "`auto` (on below 40 GB VRAM), `on` or `off`" },
+    { "name": "HF_TOKEN", "required": false, "secret": true, "note": "optional; both pinned models are public on huggingface.co" },
+    { "name": "HF_HOME", "required": false, "secret": false, "note": "local cache directory for model weights" },
+    { "name": "ARCHIVE_AFTER_DAYS", "required": false, "secret": false, "note": "age in days after which the age job archives a clip (default 30)" },
+    { "name": "SHARE_LINK_TTL_SECONDS", "required": false, "secret": false, "note": "default share link lifetime (default 3600, max 604800)" },
+    { "name": "NEXT_PUBLIC_API_URL", "required": false, "secret": false, "note": "API origin when the web app runs on a different host; Next.js inlines it at build time" }
   ],
-  "attribution_token": "b2ai-oss-start",
-  "repo": { "org": "backblaze-b2-samples", "name": "vibe-coding-starter-kit" },
-  "screenshots": [
-    {
-      "path": "docs/images/b2-starterkit-dashboard1.png",
-      "alt": "Dashboard view showing stat cards, upload activity chart, and recent uploads table",
-      "caption": "**Dashboard** — stats, upload activity, and recent uploads at a glance:"
-    },
-    {
-      "path": "docs/images/b2-starterkit-fileview2.png",
-      "alt": "File browser view showing a tree of files with hover actions",
-      "caption": "**File browser** — tree view with preview, download, and delete:"
-    }
-  ]
+  "attribution_token": "b2ai-wan-video-generation-archive",
+  "repo": { "org": "backblaze-b2-samples", "name": "wan-video-generation-archive" },
+  "screenshots": []
 }

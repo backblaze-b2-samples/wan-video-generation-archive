@@ -90,5 +90,6 @@ finish with `pnpm verify`.
 Defaults (in `apps/web/src/lib/query-client.tsx`):
 - `staleTime: 30s` — file lists / stats don't change second-to-second
 - `retry: 1` for transient errors; never retry 4xx (won't get better)
-- `refetchOnWindowFocus`: on (TanStack default) — dashboard self-heals
+- `refetchOnWindowFocus`: on (TanStack default) so lists self-heal
+- Generation jobs poll every 1.5 s while queued or running (`useJob`), and stop once finished; a succeeded job invalidates the clip, project and explorer queries
   when the user comes back to the tab

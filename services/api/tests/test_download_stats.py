@@ -27,7 +27,7 @@ async def test_downloads_increment_stats(client, monkeypatch):
         return FileMetadata(
             key=key,
             filename="test.txt",
-            folder="uploads/",
+            folder="video/",
             size_bytes=1024,
             size_human="1.0 KB",
             content_type="text/plain",
@@ -48,8 +48,8 @@ async def test_downloads_increment_stats(client, monkeypatch):
     assert response.status_code == 200
     assert response.json()["total_downloads"] == 0
 
-    await client.get("/files/uploads/test.txt/download")
-    await client.get("/files/uploads/test.txt/download")
+    await client.get("/files/video/test.txt/download")
+    await client.get("/files/video/test.txt/download")
 
     response = await client.get("/files/stats")
     assert response.status_code == 200
@@ -65,7 +65,7 @@ async def test_preview_does_not_increment_downloads(client, monkeypatch):
         return FileMetadata(
             key=key,
             filename="test.png",
-            folder="uploads/",
+            folder="video/",
             size_bytes=1024,
             size_human="1.0 KB",
             content_type="image/png",
@@ -83,7 +83,7 @@ async def test_preview_does_not_increment_downloads(client, monkeypatch):
     )
 
     for _ in range(3):
-        response = await client.get("/files/uploads/test.png/preview")
+        response = await client.get("/files/video/test.png/preview")
         assert response.status_code == 200
         assert response.json()["url"] == "https://example.com/preview"
 

@@ -27,7 +27,7 @@ from app.config import (  # noqa: E402
     REQUIRED_B2_SETTINGS,
     settings,
 )
-from app.runtime import files, health, metrics, ratelimit, upload  # noqa: E402
+from app.runtime import clips, files, health, jobs, metrics, models, projects, ratelimit  # noqa: E402
 from app.service.files import warm_listing_cache  # noqa: E402
 
 # --- Startup validation ---
@@ -107,11 +107,13 @@ logger = logging.getLogger("api")
 
 # --- App setup ---
 
-API_TITLE = "Vibe Coding Starter Kit API"
+API_TITLE = "Wan Video Generation Archive API"
 API_DESCRIPTION = (
-    "Local API for the Vibe Coding Starter Kit template, providing file upload "
-    "and management backed by Backblaze B2. This contract documents the "
-    "template's local API, not a hosted public endpoint."
+    "Local API for the Wan Video Generation Archive sample: generates short clips "
+    "with an open Wan video model, records each one in a per-project manifest, "
+    "archives clips by age and shares them through expiring links, all in "
+    "Backblaze B2. This contract documents the sample's local API, not a hosted "
+    "public endpoint."
 )
 API_VERSION = "0.1.0"
 
@@ -164,6 +166,9 @@ app.add_middleware(
 )
 
 app.include_router(health.router, tags=["health"])
-app.include_router(upload.router, tags=["upload"])
+app.include_router(models.router, tags=["models"])
+app.include_router(projects.router, tags=["projects"])
+app.include_router(clips.router, tags=["clips"])
+app.include_router(jobs.router, tags=["jobs"])
 app.include_router(files.router, tags=["files"])
 app.include_router(metrics.router, tags=["metrics"])

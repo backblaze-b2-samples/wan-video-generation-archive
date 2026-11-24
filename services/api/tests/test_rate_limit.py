@@ -39,5 +39,5 @@ async def test_write_tier_has_separate_budget(client, monkeypatch):
     assert (await client.get("/health")).status_code == 429  # read budget spent
 
     # Delete uses the (still-unspent) write tier, so it is not throttled.
-    resp = await client.delete("/files-by-key", params={"key": "uploads/x.txt"})
+    resp = await client.delete("/files-by-key", params={"key": "video/x.txt"})
     assert resp.status_code == 200

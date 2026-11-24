@@ -1,4 +1,4 @@
-<!-- last_verified: 2026-09-09 -->
+<!-- last_verified: 2026-11-24 -->
 # Verification
 
 What each gate actually checks, and how to recover when one fails. Read this
@@ -73,11 +73,13 @@ thing to go look at, not the boot.
 - **Integration**: HTTP handlers, B2 connectivity (`tests/`)
 - **Structural**: layering rules, import boundaries (`tests/test_structure.py`)
 - **Contract**: checked-in OpenAPI artifact and frontend route drift
-- **E2E**: Playwright browser-driven smoke tests
+- **E2E**: Playwright browser-driven smoke tests (`apps/web/e2e/navigation.spec.ts`)
+- **Live model self-test**: the real Wan model and a real bucket (`services/api/live_tests/test_wan_archive_e2e.py`, markers `live` and `gpu`)
 - **App verification**: throwaway, app-specific Playwright specs that drive a real browser through a real run
 
 ## Test placement
-- Backend: `services/api/tests/`
+- Backend: `services/api/tests/` (fakes for the S3 client and the generator in `tests/fakes.py`; no torch, no network)
+- Live: `services/api/live_tests/`, outside `testpaths`, skipped unless `RUN_LIVE_B2_TESTS=1`
 - E2E: `apps/web/e2e/` with config in `apps/web/playwright.config.ts`
 - App verification specs: `apps/web/e2e/verify/` (gitignored), sharing the fixtures in `apps/web/e2e/fixtures/`
 
@@ -192,6 +194,13 @@ request *shapes* — and the hand-written mirrors of the Pydantic models in
 the tech-debt tracker.
 
 ## Python dependency updates
+
+The model stack (`torch`, `diffusers`, `transformers`, `accelerate`, `ftfy`,
+`sentencepiece`, `numpy`) lives in `services/api/requirements-model.txt` as
+bounded `>=x,<y` windows, deliberately outside the lock so CI never installs
+torch. `tests/test_dependency_lock.py` asserts both files: exact pins in the
+lock, a lower and upper bound on every model line, and no ML package in the
+lock. Widen a model window only after re-running both GPU gates above.
 
 `services/api/requirements.txt` is the human-edited input and
 `services/api/requirements.lock` is the complete exact-version Python 3.12
@@ -369,6 +378,34 @@ by `scripts/dev.sh`.
 `e2e/**` and `playwright.config.ts` are excluded from `apps/web/tsconfig.json`,
 so no gate in `pnpm verify` typechecks them; type errors there only surface
 when `pnpm test:e2e` runs.
+
+## GPU self-test and preflight
+
+The unit suite never imports torch (`tests/test_model_registry.py::test_api_never_imports_torch`):
+the generator is a fake injected through `build_services()`, and the in-memory
+bucket in `tests/fakes.py` stands in for B2. Two gates cover the real model and
+run on the GPU host with `services/api/requirements-model.txt` installed:
+
+1. `pnpm gpu:preflight` (`services/api/scripts/gpu_preflight.py`) runs the demo
+   preset (480p, 49 frames, 30 steps, guidance 5.0) on CUDA with CPU offload off,
+   records `torch.cuda.max_memory_allocated()`, and exits non-zero above 24 GiB,
+   re-running with offload on to report whether that brings the peak under. It
+   writes nothing to B2 and prints one row for the README "GPU validation" table.
+   Without CUDA it exits 2 and says so.
+2. `RUN_LIVE_B2_TESTS=1 pnpm test:live:gpu` runs the self-test at the self-test
+   preset (`low`, 17 frames, 20 steps) under a unique project
+   `selftest-<run id>`: generate clip A, age it with
+   `as_of = now + ARCHIVE_AFTER_DAYS + 1` days and assert it moved to
+   `video/archive/<project>/<yyyy-mm>/`; generate clip B and assert it stays
+   recent; open a share link for each (200, `video/mp4`, SHA-256 equal to the
+   manifest and object metadata); check the AI-generated label in object
+   metadata, MP4 container tags and the manifest; regenerate A and compare
+   settings; audit the user agent and the endpoint derived from `B2_REGION`.
+   Cleanup deletes only that project's keys and manifest. Locally, set
+   `WAN_MODEL=wan2.1-t2v-1.3b` to run it on a smaller GPU or Apple MPS.
+
+Neither gate is part of `pnpm verify` or CI. Record the results in the README
+"GPU validation" table during the attended GPU run.
 
 ## When to run
 - After behavior change: run relevant subset

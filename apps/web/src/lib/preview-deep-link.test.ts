@@ -9,14 +9,14 @@ import {
 
 describe("previewHref", () => {
   it("points at the files page with the key as the preview param", () => {
-    expect(previewHref("uploads/photo.jpg")).toBe(
-      `/files?${PREVIEW_PARAM}=uploads%2Fphoto.jpg`,
+    expect(previewHref("video/photo.jpg")).toBe(
+      `/files?${PREVIEW_PARAM}=video%2Fphoto.jpg`,
     );
   });
 
   it("encodes characters that would otherwise break the query string", () => {
-    expect(previewHref("uploads/a b&c=d?e.png")).toBe(
-      `/files?${PREVIEW_PARAM}=uploads%2Fa%20b%26c%3Dd%3Fe.png`,
+    expect(previewHref("video/a b&c=d?e.png")).toBe(
+      `/files?${PREVIEW_PARAM}=video%2Fa%20b%26c%3Dd%3Fe.png`,
     );
   });
 });
@@ -36,7 +36,7 @@ describe("ancestorPaths", () => {
   });
 
   it("handles a single folder", () => {
-    expect(ancestorPaths("uploads/photo.jpg")).toEqual(["uploads/"]);
+    expect(ancestorPaths("video/photo.jpg")).toEqual(["video/"]);
   });
 });
 

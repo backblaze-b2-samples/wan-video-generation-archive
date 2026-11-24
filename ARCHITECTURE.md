@@ -1,20 +1,24 @@
-<!-- last_verified: 2026-08-06 -->
+<!-- last_verified: 2026-11-24 -->
 # Architecture
 
 ## Components
 
 <!-- gen:begin arch-components -->
-A well-engineered full-stack foundation — dashboard, drag-and-drop upload and a file browser — with Backblaze B2 storage already wired in, so builders skip the boilerplate loop.
+Generate short videos with Wan2.2 TI2V-5B on one GPU and keep every clip in Backblaze B2 with its prompt, seed, pinned model revision and license, archived by age and shared through expiring links.
 
-- **apps/web/** — Next.js 16, React 19, Tailwind v4, shadcn/ui, TanStack Query, Recharts
-  - File Upload (`/upload`) — drag-and-drop upload with real-time progress
-  - File Browser (`/files`) — list, preview, download, delete files
-  - Dashboard (`/`) — stats cards, upload chart, recent uploads
-  - Settings (`/settings`) — theme plus labelled demo preference fields
-- **services/api/** — FastAPI, Python 3.12+, boto3, Pydantic v2, Pillow, pypdf
+- **apps/web/** — Next.js 16, React 19, Tailwind v4, shadcn/ui, TanStack Query
+  - Clip Generation (`/generate`) — Wan2.2 text-to-video on one GPU, labelled AI-generated
+  - Clip Library (`/`) — browse clips by project and tier with their manifest entries
+  - Archive Age Job (`/archive`) — move older clips to the archive prefix and update manifest keys
+  - Bucket Explorer (`/files`) — browse, preview and download every object in the bucket
+  - Settings (`/settings`) — theme, default project and default share link lifetime
+- **services/api/** — FastAPI, Python 3.12+, boto3, Pydantic v2, Diffusers, PyTorch, imageio-ffmpeg
   - REST API for every operation the frontend consumes, exported to `docs/api/openapi.json`
   - Backblaze B2 (S3-compatible API) access isolated in the `repo/` layer
-  - Metadata Extraction — image dimensions, EXIF, PDF info, checksums
+  - Prompt-and-Seed Manifest — per-project JSONL with prompt, seed, model revision, license and checksum
+  - Share Links — expiring presigned links for recent or archived clips
+  - Regenerate from Manifest — re-run a clip from its recorded prompt, seed and revision
+  - Metadata Extraction — image dimensions, EXIF, PDF info, checksums in the explorer
   - Structured JSON logging with request tracing, plus `/health` and Prometheus `/metrics`
 - **packages/shared/** — TypeScript types generated from the API contract by `pnpm gen:api`, consumed by `apps/web/` as a workspace dependency (pnpm workspaces)
 <!-- gen:end arch-components -->
@@ -26,9 +30,10 @@ The API follows a strict layered architecture:
 ```
 types/     Pydantic models — no logic, no imports from other layers
   |
-config/    Settings (pydantic-settings) — depends only on types
+config/    Settings, pinned model registry, key layout — depends only on types
   |
-repo/      Data access (boto3 B2 client) — no business logic
+repo/      Adapters: boto3 B2 client, clip store, manifest store, Wan pipeline,
+           MP4 encoder — no business logic
   |
 service/   Business logic — calls repo, returns types
   |
@@ -39,7 +44,8 @@ runtime/   FastAPI routes — calls service, never repo directly
 
 1. Dependencies flow downward only: `types` -> `config` -> `repo` -> `service` -> `runtime`
 2. No backward imports (e.g., service must not import from runtime)
-3. `boto3` only allowed in `repo/` layer
+3. `boto3` only allowed in `repo/` layer; `torch` and `diffusers` only inside
+   `repo/wan_pipeline.py`, imported lazily so the API and tests run without them
 4. All boundary data uses Pydantic models (no raw dicts across layers)
 5. Authored Python files under `services/api/app/` stay under 300 lines
 
@@ -62,34 +68,18 @@ services/api/
 
 ## Boundary Invariants
 
-- **No external SDK leakage**: `boto3` is only imported in `app/repo/`. All other layers interact with B2 through the repo interface.
-- **No raw dicts at boundaries**: All data crossing layer boundaries uses typed Pydantic models.
-- **No cross-layer mutable state**: Configuration is read-only after init, and no mutable state is shared *between* layers. Intra-layer caches/counters (the listing cache in `repo/list_cache.py`, the B2 connectivity cache in `repo/b2_client.py`, the download counter in `repo/counter.py`, the rate-limit and metrics state in `runtime/`) are module-local and guarded by a `threading.Lock`. The listing cache also owns the only background thread in the app: a stale entry is served immediately while that thread re-scans (stale-while-revalidate), and `main.lifespan` warms it once at startup so no user pays for the cold full-bucket scan.
-- **Validated inputs**: All HTTP inputs validated by FastAPI/Pydantic. File keys reject empty and path-traversal patterns; optional prefix confinement via `ALLOWED_KEY_PREFIX` (off by default).
+- **No external SDK leakage**: `boto3` is only imported in `app/repo/`; the ML stack only inside `app/repo/wan_pipeline.py`, inside methods. `tests/test_model_registry.py::test_api_never_imports_torch` asserts importing the app pulls in neither torch nor diffusers.
+- **No raw dicts at boundaries**: data crossing layers uses Pydantic models, or the frozen dataclasses in `app/types/generation.py` between the clip service and a generator.
+- **One wiring point**: `app/service/container.py` builds the repo adapters and services once per process (`get_services()`); tests swap the whole set with `set_services(build_services(fake_client, ...))`.
+- **No cross-layer mutable state**: configuration is read-only after init. Module-local state is guarded by locks: the listing cache and B2 connectivity cache in `repo/`, the per-project manifest locks in `repo/manifest_store.py`, the job table in `service/jobs.py`, the rate-limit and metrics state in `runtime/`.
+- **Background threads**: the listing cache's refresh thread, and one generation worker thread (`service/jobs.py`) that runs jobs FIFO, one at a time, so a single pipeline sits on the GPU and the API process is the single writer of every manifest.
+- **Validated inputs**: HTTP inputs are validated by FastAPI/Pydantic; project names match `^[a-z0-9][a-z0-9-]{0,62}$`; model, resolution and frame count must be in the registry; explorer keys reject path traversal, and deletes under `video/recent/`, `video/archive/` and `video/manifests/` are refused (409).
 
 ## Deployment
 
-- **Local dev** — `pnpm dev` runs both services via `concurrently`
-  - Web: `localhost:3000`
-  - API: `localhost:8000`
-- **Railway** — two services from the same repository: `web` builds from the
-  repository root because it consumes `packages/shared`; `api` builds from
-  `services/api`. Each service's versioned config sits at its own root —
-  `railway.json` and `services/api/railway.json` — the default path Railway
-  discovers, so a one-click template deploy inherits the same build, start, and
-  health behavior with nothing to configure by hand. The human-approved
-  staging/production contract lives in [infra/railway/README.md](infra/railway/README.md).
-- **Vercel** — one project using [Vercel Services](https://vercel.com/docs/services):
-  the `web` (Next.js) and `api` (FastAPI) services build from the same repo and
-  share one origin — the web app at `/`, the API under `/api`. The repo-root
-  `vercel.json` declares both services and routes `/api/*` to the API service;
-  the Vercel-only `services/api/index.py` strips the `/api` prefix so FastAPI
-  keeps its native paths (`/health`, `/files`, …). Uploads go directly from the
-  browser to B2 via a presigned PUT (see
-  [File Upload](docs/features/file-upload.md)), so they bypass the Function's
-  4.5 MB payload ceiling entirely — the bucket must allow the deploy origin in
-  its CORS. A two-separate-Projects alternative and the full delivery contract
-  live in [infra/vercel/README.md](infra/vercel/README.md).
+- **Local dev**: `pnpm dev` runs both services via `concurrently` (web `localhost:3000`, API `localhost:8000`). With the model stack installed and `WAN_MODEL=wan2.1-t2v-1.3b`, generation runs on a smaller CUDA GPU or, best effort, Apple MPS.
+- **GPU host**: the same two processes on one CUDA machine (validated on a Vultr A40), reached through an SSH tunnel. Runbook: [infra/gpu-vm/README.md](infra/gpu-vm/README.md).
+- No serverless target: a torch GPU worker cannot run on Vercel or Railway, so `deployment_targets` is empty and the starter kit's Vercel and Railway configs were removed.
 
 External provisioning and deployment remain explicit user-approved actions.
 
@@ -97,45 +87,48 @@ External provisioning and deployment remain explicit user-approved actions.
 
 <!-- gen:begin arch-data-stores -->
 - **Backblaze B2 (S3-compatible API)** — the only data store; there is no application database
-  - Every object this app writes lives under the `uploads/` key prefix of one bucket
+  - Every object this app writes lives under the `video/` key prefix of one bucket
   - Listing, per-key metadata and presigned URLs all come from the S3 surface below
-  - The primary entity is `FileMetadata`; one file is one object
+  - The primary entity is `ClipRecord`; one clip is one object
 <!-- gen:end arch-data-stores -->
 
 ## External Services
 
 <!-- gen:begin arch-external-services -->
 - **Backblaze B2 (S3-compatible API)** — reached only through `services/api/app/repo/`, using:
-  - `put_object` — store an uploaded object
-  - `presigned PUT` — the browser uploads bytes directly to B2, bypassing the Function payload cap
-  - `list_objects_v2` — the shared full-bucket listing behind the file list and the stats cards
-  - `head_object` — cheap per-key metadata, and the /health connectivity probe
-  - `get_object` — re-read bytes to recompute rich metadata on demand
-  - `presigned GET` — download and inline preview URLs
-  - `delete_object` — remove an object
+  - `put_object` — store a clip, its settings sidecar and the rewritten project manifest
+  - `get_object` — read a project manifest or settings sidecar
+  - `head_object` — verify an archive copy before removing the recent copy, and the /health probe
+  - `copy_object` — move a clip from video/recent/ to video/archive/ keeping its AI-generated metadata
+  - `delete_object` — drop the recent copy after a verified move, or delete a clip
+  - `list_objects_v2` — list project manifests and back the full-bucket explorer
+  - `presigned GET` — expiring share links and explorer downloads without a public bucket
 <!-- gen:end arch-external-services -->
 
 ## Trust Boundaries
 
 See [docs/SECURITY.md](docs/SECURITY.md) for full security documentation.
 
-- **Frontend -> API** — CORS-restricted to configured origins. `CORSMiddleware` is registered LAST in `main.py` (outermost) so it wraps **every** response, including uncaught-exception 500s — otherwise the browser would block error responses and the UI would only see an opaque "network error". See [docs/RELIABILITY.md](docs/RELIABILITY.md#error-handling). A per-IP rate-limit middleware sits inner to CORS; see [docs/SECURITY.md](docs/SECURITY.md#rate-limiting).
-- **API -> B2** — authenticated via application keys, signature v4
-- **Client -> B2** — presigned URLs for download (10-min expiry, forced attachment)
+- **Frontend -> API**: CORS-restricted to configured origins. `CORSMiddleware` is registered LAST in `main.py` (outermost) so it wraps every response, including uncaught-exception 500s. See [docs/RELIABILITY.md](docs/RELIABILITY.md#error-handling). A per-IP rate-limit middleware sits inner to CORS; see [docs/SECURITY.md](docs/SECURITY.md#rate-limiting).
+- **API -> B2**: application key, signature v4, user agent `b2ai-wan-video-generation-archive`.
+- **API -> huggingface.co**: model weights only, at pinned revisions; any other `HF_ENDPOINT` is refused.
+- **Anyone with a share link -> B2**: a presigned GET for one key, inline `video/mp4`, 60 s to 7 days. The bucket stays private.
 
 ## Data Flows
 
-- **Upload**: Browser -> `POST /upload/presign` (API validates the declared file + signs a PUT) -> Browser PUTs bytes **directly to B2** -> `POST /upload/verify` (API HEADs + Range-sniffs the stored object) -> response
-- **List**: Browser -> `GET /files` -> service calls repo -> returns file list
-- **Download**: Browser -> `GET /files/{key}/download` -> service validates key -> repo generates presigned URL -> browser downloads
-- **Delete**: Browser -> `DELETE /files/{key}` -> service validates key -> repo deletes from B2
+- **Generate**: Browser -> `POST /clips` (validated against the registry, 202 + job) -> worker thread: Wan pipeline -> frames -> MP4 with AI-generated tags -> `put_object` MP4, `put_object` sidecar, manifest read-modify-write. Browser polls `GET /jobs/{job_id}`.
+- **Find**: Browser -> `GET /clips` / `GET /projects` -> service reads `video/manifests/*.jsonl` -> `ClipRecord[]`. The player asks `GET /files-by-key/preview?key=<output_key>` for an inline presigned URL.
+- **Age**: `POST /projects/{project}/archive` (or the CLI) -> for each due clip: `copy_object` MP4 -> `head_object` verify size + `sha256` -> `copy_object` sidecar -> manifest rewrite -> `delete_object` recent copies.
+- **Share**: `POST .../share` -> manifest lookup -> `head_object` -> presigned GET for the current key.
+- **Regenerate**: `POST .../regenerate` -> registry pin check (409 if unpinned) -> same generate flow with `regenerated_from`.
+- **Explorer**: `/files` lists, previews and downloads any object through the kit's file routes.
 
 ## Observability
 
-- Structured JSON logging on all requests with `request_id`
-- Request timing middleware (logs duration per request; also the catch-all that converts uncaught exceptions to a typed JSON 500)
-- `/metrics` endpoint (Prometheus format: request count, latency, upload count)
-- `/health` endpoint (B2 connectivity check)
+- Structured JSON logging on all requests with `request_id`; generation, archive and job failures are logged with their clip or job id
+- Request timing middleware (also the catch-all that converts uncaught exceptions to a typed JSON 500)
+- `/metrics` (Prometheus): request counts and latency, `clips_generated_total`, `clip_generation_errors_total`
+- `/health` (B2 connectivity check); `GET /models` reports which model is loaded and on which device
 
 ## API Contract
 
@@ -158,6 +151,8 @@ still in step.
 | --- | --- | --- |
 | `DELETE /files-by-key` | `DeleteFileResponse` | `fileByKeyDelete` |
 | `DELETE /files/{key}` | `DeleteFileResponse` | `legacyFileDelete` |
+| `DELETE /projects/{project}/clips/{clip_id}` | `DeleteClipResponse` | `deleteClip` |
+| `GET /clips` | `ClipList` | `clips` |
 | `GET /files` | `FileMetadata[]` | `files` |
 | `GET /files-by-key/detail` | `FileMetadataDetail` | `fileByKeyDetail` |
 | `GET /files-by-key/download` | `FileUrlResponse` | `fileByKeyDownload` |
@@ -167,11 +162,17 @@ still in step.
 | `GET /files/{key}/download` | `FileUrlResponse` | `legacyFileDownload` |
 | `GET /files/{key}/preview` | `FileUrlResponse` | `legacyFilePreview` |
 | `GET /files/stats` | `UploadStats` | `fileStats` |
-| `GET /files/stats/activity` | `DailyUploadCount[]` | `uploadActivity` |
 | `GET /health` | `HealthStatus` | `health` |
+| `GET /jobs` | `GenerationJob[]` | `jobs` |
+| `GET /jobs/{job_id}` | `GenerationJob` | `job` |
 | `GET /metrics` | — | _server-only_ |
-| `POST /upload/presign` | `PresignUploadResponse` | `uploadPresign` |
-| `POST /upload/verify` | `FileUploadResponse` | `uploadVerify` |
+| `GET /models` | `ModelInfo[]` | `models` |
+| `GET /projects` | `ProjectSummary[]` | `projects` |
+| `GET /projects/{project}/clips/{clip_id}` | `ClipRecord` | `clip` |
+| `POST /clips` | — | `generateClip` |
+| `POST /projects/{project}/archive` | `AgeJobResult` | `ageProject` |
+| `POST /projects/{project}/clips/{clip_id}/regenerate` | — | `regenerateClip` |
+| `POST /projects/{project}/clips/{clip_id}/share` | `ShareLink` | `shareClip` |
 <!-- gen:end arch-api-contract -->
 
 ## Canonical Files
@@ -198,17 +199,21 @@ Generated — **never hand-edit**; change the source and re-run the command:
 - `packages/shared/src/generated/api-types.ts` — `pnpm gen:api`
 - `apps/web/src/lib/generated/api-routes.ts` — `pnpm gen:api`
 - `apps/web/src/lib/generated/query-keys.ts` — `pnpm gen:api`
-- The marker-delimited regions of this file, `AGENTS.md`, `README.md` and the 2 `infra/` runbooks — `pnpm gen:docs`
+- The marker-delimited regions of this file, `AGENTS.md`, `README.md` and the 0 `infra/` runbooks — `pnpm gen:docs`
 <!-- gen:end arch-canonical-files -->
 
 ## Core Features
 
 <!-- gen:begin arch-core-features -->
-- [File Upload](docs/features/file-upload.md) — drag-and-drop upload with real-time progress
-- [File Browser](docs/features/file-browser.md) — list, preview, download, delete files
-- [Dashboard](docs/features/dashboard.md) — stats cards, upload chart, recent uploads
-- [Metadata Extraction](docs/features/metadata-extraction.md) — image dimensions, EXIF, PDF info, checksums
-- [Settings](docs/features/settings.md) — theme plus labelled demo preference fields
+- [Clip Generation](docs/features/clip-generation.md) — Wan2.2 text-to-video on one GPU, labelled AI-generated
+- [Clip Library](docs/features/clip-library.md) — browse clips by project and tier with their manifest entries
+- [Prompt-and-Seed Manifest](docs/features/manifest.md) — per-project JSONL with prompt, seed, model revision, license and checksum
+- [Archive Age Job](docs/features/archive-age-job.md) — move older clips to the archive prefix and update manifest keys
+- [Share Links](docs/features/share-links.md) — expiring presigned links for recent or archived clips
+- [Regenerate from Manifest](docs/features/regeneration.md) — re-run a clip from its recorded prompt, seed and revision
+- [Bucket Explorer](docs/features/file-browser.md) — browse, preview and download every object in the bucket
+- [Metadata Extraction](docs/features/metadata-extraction.md) — image dimensions, EXIF, PDF info, checksums in the explorer
+- [Settings](docs/features/settings.md) — theme, default project and default share link lifetime
 <!-- gen:end arch-core-features -->
 
 ## References
@@ -217,6 +222,4 @@ Generated — **never hand-edit**; change the source and re-run the command:
 - [docs/SECURITY.md](docs/SECURITY.md) — security principles and implementation
 - [docs/RELIABILITY.md](docs/RELIABILITY.md) — reliability expectations
 - [AGENTS.md](AGENTS.md) — architectural invariants and agent instructions
-- [infra/vercel/README.md](infra/vercel/README.md) — Vercel deployment contract
-- [infra/railway/README.md](infra/railway/README.md) — Railway delivery contract
 <!-- gen:end arch-references -->

@@ -1,4 +1,4 @@
-<!-- last_verified: 2026-08-04 -->
+<!-- last_verified: 2026-11-24 -->
 # Tech Debt Tracker
 
 Known tech debt items. Agents update this when they discover or create tech debt.
@@ -7,16 +7,14 @@ Known tech debt items. Agents update this when they discover or create tech debt
 
 | Description | Impact | Proposed Resolution | Priority |
 |---|---|---|---|
+| Generation jobs live in API process memory | A restart loses queued/running jobs and the job history (stored clips are safe) | Persist jobs (a small job table, or job objects in B2) and resume on start | Low |
+| Manifests rely on a single writer | Two API processes, or the CLI writing while the API writes the same project, can lose a manifest line | Use B2 conditional writes (`If-Match` on the manifest ETag) with retry, or move the manifest to a database | Medium |
+| Frontend has no component/render tests; e2e only checks that screens render and the Generate pre-fill | Job polling states and the share/delete dialogs are unverified in a browser | Add jsdom render tests for `JobProgress` and `ShareDialog`; a GPU-host e2e that generates one clip | Medium |
+| `GET /clips` reads every project manifest on each call | Fine for tens of projects; slow for hundreds | Cache manifests in memory with invalidation on write (the API is the single writer) | Low |
 | Download counter & `/metrics` not durable across restart/replicas | Counter resets on redeploy (ephemeral FS); both fragment across replicas | Back the counter with a shared store (Redis/DB); label/aggregate metrics per instance. Relocated to `repo/counter.py` and documented in RELIABILITY.md | Medium |
-| Upload buffers the whole file in memory | ~3× file size RAM per upload; large files strain the server (event loop no longer blocked, but memory unbounded) | Stream to a temp file, or S3 multipart above a size threshold | Medium |
 | `GET /files-by-key/detail` re-downloads the whole object to recompute metadata | Rich metadata for stored files costs a full download + in-memory hash per preview; large objects are slow/expensive and buffer in API memory | Persist `FileMetadataDetail` at upload (S3 user-metadata, mind the ~2KB cap, or a sidecar/object store) and serve it without re-downloading; add a size ceiling above which detail is skipped | Medium |
 | Audio/Video metadata fields declared but never extracted | `duration_seconds`/`codec`/`bitrate` always null; real extraction needs a system dependency (ffmpeg/ffprobe or libmediainfo), not a pip-only lib | Add an audio/video extractor in `service/metadata.py`, or drop the fields from `FileMetadataDetail` | Low |
-| `get_upload_activity` re-materializes `FileMetadata` for every object just to bucket dates | Wasted O(n) CPU per `/files/stats/activity` (scan is cached; materialization is not) | Aggregate from raw listing dicts like `get_upload_stats` does | Low |
 | `GET /files` has no pagination — `/files` shows only the newest 100 objects | An older object is unreachable from the UI. The browser now *states* the truncation (`lib/file-list-limit.ts`) instead of claiming "everything in your bucket", but there is still no way to page or search to an older key | Add cursor pagination to `GET /files` (pass through S3's `ContinuationToken` rather than slicing a full scan) plus "Load more"/search in `FileBrowser` | Medium |
-| Only the tree layout exists on `/files`; the Settings "Default file view" List and Grid options are demo placeholders | Settings offers Tree/List/Grid but only the tree renders; the option is labelled a demo field and persists to localStorage only | Build real List/Grid renderers plus a view switcher on `/files`, then honour the stored `defaultView` and drop the "Demo field" label | Low |
-| `/settings` Profile & preference fields are a labelled demo, not backed by real surfaces | Display name, bio, email-on-upload, quota-warning + threshold, and default view are illustrative placeholders (persist to localStorage, drive nothing) because there is no account system, mailer, quota banner, or activity log. Theme is the only real preference | Build each backing surface (mailer, quota banner, activity log / share links, List/Grid views), then wire the matching field to it — server-side behind a `/preferences` route once auth lands — and drop its "Demo field" label | Low |
-| Frontend has no component/render tests; e2e only checks routing | UI states (loading/error/empty) and the real upload→delete journey are unverified | Add jsdom + @testing-library/react render tests; a fixture-driven upload e2e | Medium |
-| Allowed file types hardcoded in `service/upload.py` | Reuse friction — each new app edits source to change accepted types | Make `ALLOWED_TYPES` / `MIME_EXTENSION_MAP` env-configurable | Low |
 | No auth layer or placeholder | Every consumer designs auth from scratch; unclear where it plugs in | Add example middleware (API-key or JWT) + docs for the seam | Low |
 | No `docker-compose.yaml` | Manual venv + dual-process startup slows first run | Add compose with `web` + `api` services and Dockerfiles | Low |
 | No dedicated connection-status banner | Offline only surfaced reactively per failed query | Add a global connectivity banner (route + global error boundaries already exist) | Low |

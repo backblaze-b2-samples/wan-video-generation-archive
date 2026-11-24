@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { FileMetadata } from "@vibe-coding-starter-kit/shared";
+import type { FileMetadata } from "@wan-video-generation-archive/shared";
 
 import {
   MAX_AUTO_EXPAND_DEPTH,
@@ -25,25 +25,25 @@ function file(key: string, uploadedAt: string): FileMetadata {
 describe("buildFileTree", () => {
   it("nests files under folders derived from their keys", () => {
     const tree = buildFileTree([
-      file("uploads/a.txt", "2026-02-01T00:00:00Z"),
-      file("uploads/photos/b.png", "2026-02-02T00:00:00Z"),
+      file("video/a.txt", "2026-02-01T00:00:00Z"),
+      file("video/photos/b.png", "2026-02-02T00:00:00Z"),
       file("docs/c.pdf", "2026-02-03T00:00:00Z"),
     ]);
 
     // Two top-level folders, sorted alphabetically.
     expect(tree.map((n) => n.type)).toEqual(["folder", "folder"]);
     expect((tree[0] as TreeFolder).name).toBe("docs");
-    expect((tree[1] as TreeFolder).name).toBe("uploads");
+    expect((tree[1] as TreeFolder).name).toBe("video");
 
-    // uploads/ contains a nested photos/ folder.
+    // video/ contains a nested photos/ folder.
     const uploads = tree[1] as TreeFolder;
     expect((uploads.children[0] as TreeFolder).name).toBe("photos");
   });
 
   it("sorts files newest-first within a folder", () => {
     const tree = buildFileTree([
-      file("uploads/old.txt", "2026-01-01T00:00:00Z"),
-      file("uploads/new.txt", "2026-03-01T00:00:00Z"),
+      file("video/old.txt", "2026-01-01T00:00:00Z"),
+      file("video/new.txt", "2026-03-01T00:00:00Z"),
     ]);
 
     const uploads = tree[0] as TreeFolder;
@@ -67,11 +67,11 @@ describe("buildFileTree", () => {
 describe("initialExpandedPaths", () => {
   it("expands only the top level when it already reveals files", () => {
     const tree = buildFileTree([
-      file("uploads/a.txt", "2026-02-01T00:00:00Z"),
-      file("uploads/photos/b.png", "2026-02-02T00:00:00Z"),
+      file("video/a.txt", "2026-02-01T00:00:00Z"),
+      file("video/photos/b.png", "2026-02-02T00:00:00Z"),
     ]);
 
-    expect(initialExpandedPaths(tree)).toEqual(new Set(["uploads/"]));
+    expect(initialExpandedPaths(tree)).toEqual(new Set(["video/"]));
   });
 
   it("keeps descending until file rows are visible", () => {

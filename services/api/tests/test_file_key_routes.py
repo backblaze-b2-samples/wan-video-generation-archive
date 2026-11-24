@@ -18,7 +18,7 @@ VALID_KEYS = [
 INVALID_KEYS = [
     "",
     "../secret.txt",
-    "uploads/%2e%2e/secret.txt",
+    "video/%2e%2e/secret.txt",
 ]
 
 

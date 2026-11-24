@@ -18,8 +18,6 @@ packages/shared/   Shared TypeScript types, generated from the API contract
 docs/              System of record (features, workflows, security, reliability)
 docs/exec-plans/   Execution plans, tech debt, and sample.json (the gen:docs input)
 scripts/gen/       Generator policy: API naming, sample-manifest schema
-infra/vercel/      Vercel deployment contract
-infra/railway/     Railway delivery contract (per-service railway.json at their service roots)
 ```
 <!-- gen:end agents-repo-map -->
 
@@ -28,16 +26,22 @@ infra/railway/     Railway delivery contract (per-service railway.json at their 
 These pieces are shared scaffolding rather than app-specific code: keep them, and adapt only what this app actually requires.
 
 **Keep as-is (do not strip, rename, or replace)**
-- **UI kit / design system.** `apps/web/src/components/ui/` (shadcn primitives), the design tokens in `apps/web/src/app/globals.css`, and the `/design` reference page. Build new screens with these primitives; never edit the generated `components/ui/` files directly. Restyling happens through tokens in `globals.css`.
-- **File Explorer.** `/files` route, `apps/web/src/app/files/`, and `apps/web/src/components/files/`. The Files sidebar entry in `apps/web/src/components/layout/app-sidebar.tsx` stays.
-- **Upload.** `/upload` route, `apps/web/src/app/upload/`, and `apps/web/src/components/upload/`. The Upload sidebar entry stays.
-- The sidebar nav itself (Dashboard, Upload, Files, Settings, plus the Design System utility link).
+- **UI kit / design system.** `apps/web/src/components/ui/` (shadcn primitives), the design tokens in `apps/web/src/app/globals.css`, and the `/design` reference page. Build new screens with these primitives; never edit the generated `components/ui/` files directly.
+- **Bucket Explorer.** `/files` route, `apps/web/src/app/files/`, and `apps/web/src/components/files/`, with its sidebar entry. It stays full-bucket; its only change here is the 409 guard on deletes under the managed `video/` prefixes.
+- The sidebar nav itself (Library, Generate, Archive, Bucket Explorer, Settings, plus the Design System link).
 
-**Adapt to this app**
-- **Dashboard.** `/` route and `apps/web/src/components/dashboard/` (stats cards, upload chart, recent uploads table) are illustrative defaults. Replace them with metrics, charts, and tables that reflect what this app actually does (e.g. transcripts processed, embeddings indexed, classifications run). New aggregations must flow through the same `runtime -> service -> repo` layering and be exposed via TanStack Query hooks in `apps/web/src/lib/queries.ts` — no bare `useEffect + fetch`, and no hand-added `qk` entry: query keys come from `pnpm gen:api`.
-- Update `docs/features/dashboard.md` in the same PR as any dashboard change (see §9).
+**This app's own screens** (`apps/web/src/components/clips/`)
+- **Library** `/` (the asset explorer scoped to `video/`), **Generate** `/generate`, **Clip** `/clip?project=&id=`, **Archive** `/archive`. They read manifests through TanStack Query hooks in `apps/web/src/lib/queries.ts`; no bare `useEffect + fetch`, and no hand-added `qk` entry.
+- Clips enter B2 only through the model, so there is no upload page: every clip has a manifest entry. Do not add a path that writes under `video/` without writing its manifest line.
 
-**Why this contract exists** — the UI kit, Files, and Upload pages are the reusable B2-backed scaffolding; stripping them costs the app its whole storage surface. The dashboard is the one screen designed to be rewritten per app.
+**Why this contract exists**: the UI kit and the explorer are the reusable B2-backed scaffolding; the clip screens are where this sample's story lives.
+
+## 2a. Model and Manifest Rules
+
+- Every model is a `WanModelSpec` in `services/api/app/config/models.py` with a 40-hex `revision` and `license: "apache-2.0"`; tests assert both. Never add a model whose license restricts commercial use (LTX-Video and LTX-2 are excluded) and never load weights from anywhere but huggingface.co.
+- `torch` and `diffusers` are imported only inside `repo/wan_pipeline.py` methods; `pnpm test:api` must pass without them.
+- Every key under `video/` is built by `services/api/app/config/layout.py`. Every manifest change goes through `ManifestStore.update()`; the API process is the single writer.
+- A clip's prompt, seed, model and revision are never edited; create a new clip instead.
 
 ## 3. Architectural Invariants
 
@@ -225,8 +229,6 @@ If documentation and implementation conflict, update docs in the same PR. Docume
 | The API contract itself | [docs/api/openapi.json](docs/api/openapi.json) |
 | Execution plans | [docs/exec-plans/](docs/exec-plans/) |
 | Tech debt | [docs/exec-plans/tech-debt-tracker.md](docs/exec-plans/tech-debt-tracker.md) |
-| Deploying to vercel | [infra/vercel/README.md](infra/vercel/README.md) |
-| Deploying to railway | [infra/railway/README.md](infra/railway/README.md) |
 <!-- gen:end agents-doc-map -->
 
 ## 11. When Unsure
@@ -244,7 +246,4 @@ If documentation and implementation conflict, update docs in the same PR. Docume
 ## 13. External Delivery
 
 - Never provision, deploy, migrate, publish, or create an externally reachable preview without the user's explicit approval.
-- For approved Railway or Vercel work, follow the selected platform's delivery
-  contract — [infra/railway/README.md](infra/railway/README.md) or
-  [infra/vercel/README.md](infra/vercel/README.md) — for configuration, review,
-  verification, rollback, and cleanup.
+- There are no Vercel or Railway targets: the API needs a CUDA host. For an approved GPU run, follow [infra/gpu-vm/README.md](infra/gpu-vm/README.md) for setup, verification and teardown, and never expose the API port publicly.

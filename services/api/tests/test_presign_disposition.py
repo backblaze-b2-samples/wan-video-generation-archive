@@ -36,7 +36,7 @@ def fake_s3(monkeypatch):
 
 
 def test_repo_defaults_to_attachment(fake_s3):
-    b2_client.get_presigned_url("uploads/report.pdf", filename="report.pdf")
+    b2_client.get_presigned_url("video/report.pdf", filename="report.pdf")
     disposition = fake_s3.params["ResponseContentDisposition"]
     assert disposition.startswith("attachment;")
     assert "report.pdf" in disposition
@@ -44,7 +44,7 @@ def test_repo_defaults_to_attachment(fake_s3):
 
 def test_repo_inline_disposition(fake_s3):
     b2_client.get_presigned_url(
-        "uploads/report.pdf", filename="report.pdf", disposition="inline"
+        "video/report.pdf", filename="report.pdf", disposition="inline"
     )
     disposition = fake_s3.params["ResponseContentDisposition"]
     assert disposition.startswith("inline;")
@@ -52,13 +52,13 @@ def test_repo_inline_disposition(fake_s3):
 
 
 def test_repo_inline_without_filename(fake_s3):
-    b2_client.get_presigned_url("uploads/report.pdf", disposition="inline")
+    b2_client.get_presigned_url("video/report.pdf", disposition="inline")
     assert fake_s3.params["ResponseContentDisposition"] == "inline"
 
 
 def test_repo_rejects_unknown_disposition(fake_s3):
     with pytest.raises(ValueError):
-        b2_client.get_presigned_url("uploads/report.pdf", disposition="sideways")
+        b2_client.get_presigned_url("video/report.pdf", disposition="sideways")
 
 
 def _stub_metadata(monkeypatch) -> list[dict]:
@@ -69,7 +69,7 @@ def _stub_metadata(monkeypatch) -> list[dict]:
         return FileMetadata(
             key=key,
             filename="report.pdf",
-            folder="uploads/",
+            folder="video/",
             size_bytes=1024,
             size_human="1.0 KB",
             content_type="application/pdf",
@@ -90,20 +90,20 @@ def _stub_metadata(monkeypatch) -> list[dict]:
 
 def test_service_preview_asks_for_inline(monkeypatch):
     calls = _stub_metadata(monkeypatch)
-    files_service.get_preview_url("uploads/report.pdf")
+    files_service.get_preview_url("video/report.pdf")
     assert calls[-1]["disposition"] == "inline"
 
 
 def test_service_download_asks_for_attachment(monkeypatch):
     calls = _stub_metadata(monkeypatch)
-    files_service.get_download_url("uploads/report.pdf")
+    files_service.get_download_url("video/report.pdf")
     assert calls[-1]["disposition"] == "attachment"
 
 
 def test_preview_and_download_dispositions_differ(monkeypatch):
     calls = _stub_metadata(monkeypatch)
-    files_service.get_preview_url("uploads/report.pdf")
-    files_service.get_download_url("uploads/report.pdf")
+    files_service.get_preview_url("video/report.pdf")
+    files_service.get_download_url("video/report.pdf")
     assert [c["disposition"] for c in calls] == ["inline", "attachment"]
 
 
@@ -111,7 +111,7 @@ def test_preview_and_download_dispositions_differ(monkeypatch):
 async def test_preview_route_uses_inline(client, monkeypatch):
     calls = _stub_metadata(monkeypatch)
     response = await client.get(
-        "/files-by-key/preview", params={"key": "uploads/report.pdf"}
+        "/files-by-key/preview", params={"key": "video/report.pdf"}
     )
     assert response.status_code == 200
     assert calls[-1]["disposition"] == "inline"
@@ -121,7 +121,7 @@ async def test_preview_route_uses_inline(client, monkeypatch):
 async def test_download_route_uses_attachment(client, monkeypatch):
     calls = _stub_metadata(monkeypatch)
     response = await client.get(
-        "/files-by-key/download", params={"key": "uploads/report.pdf"}
+        "/files-by-key/download", params={"key": "video/report.pdf"}
     )
     assert response.status_code == 200
     assert calls[-1]["disposition"] == "attachment"

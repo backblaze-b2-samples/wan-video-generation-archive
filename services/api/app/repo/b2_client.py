@@ -1,5 +1,4 @@
 import functools
-import io
 import mimetypes
 import time
 from datetime import UTC, datetime
@@ -51,7 +50,7 @@ def get_s3_client():
             read_timeout=30,
             retries={"mode": "standard", "total_max_attempts": 3},
             signature_version="s3v4",
-            user_agent_extra="b2ai-oss-start",
+            user_agent_extra="b2ai-wan-video-generation-archive",
         ),
     )
 
@@ -78,35 +77,6 @@ def check_connectivity() -> bool:
     with _health_lock:
         _health_cache = (time.monotonic(), ok)
     return ok
-
-
-def upload_file(
-    file_data: bytes, key: str, content_type: str
-) -> FileMetadata:
-    """Upload file to B2. Raises RuntimeError on S3 failure."""
-    client = get_s3_client()
-    try:
-        client.put_object(
-            Bucket=settings.b2_bucket_name,
-            Key=key,
-            Body=io.BytesIO(file_data),
-            ContentType=content_type,
-        )
-    except ClientError as e:
-        raise RuntimeError(f"B2 upload failed for '{key}': {e}") from e
-    _invalidate_list_cache()  # new object must show up in listings/stats now
-    folder, filename = _split_key(key)
-    size = len(file_data)
-    return FileMetadata(
-        key=key,
-        filename=filename,
-        folder=folder,
-        size_bytes=size,
-        size_human=humanize_bytes(size),
-        content_type=content_type,
-        uploaded_at=datetime.now(UTC),
-        url=_public_url(key),
-    )
 
 
 def _list_all_objects(prefix: str = "") -> list[dict]:

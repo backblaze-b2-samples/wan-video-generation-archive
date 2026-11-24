@@ -30,7 +30,7 @@ def _fake_metadata(
     return FileMetadata(
         key=key,
         filename=key.rsplit("/", 1)[-1],
-        folder="uploads/",
+        folder="video/",
         size_bytes=size_bytes,
         size_human=f"{size_bytes} B",
         content_type=content_type,
@@ -55,7 +55,7 @@ async def test_detail_returns_checksums_for_text_file(client, monkeypatch):
     monkeypatch.setattr(files_service, "get_object_bytes", lambda key: TEXT_BYTES)
 
     resp = await client.get(
-        "/files-by-key/detail", params={"key": "uploads/note.txt"}
+        "/files-by-key/detail", params={"key": "video/note.txt"}
     )
 
     assert resp.status_code == 200
@@ -85,7 +85,7 @@ async def test_detail_extracts_image_dimensions(client, monkeypatch):
     monkeypatch.setattr(files_service, "get_object_bytes", lambda key: png)
 
     resp = await client.get(
-        "/files-by-key/detail", params={"key": "uploads/pixel.png"}
+        "/files-by-key/detail", params={"key": "video/pixel.png"}
     )
 
     assert resp.status_code == 200
@@ -99,7 +99,7 @@ async def test_detail_missing_file_returns_404(client, monkeypatch):
     monkeypatch.setattr(files_service, "get_file_metadata", lambda key: None)
 
     resp = await client.get(
-        "/files-by-key/detail", params={"key": "uploads/gone.txt"}
+        "/files-by-key/detail", params={"key": "video/gone.txt"}
     )
 
     assert resp.status_code == 404
@@ -120,7 +120,7 @@ async def test_detail_oversized_file_rejected_without_download(client, monkeypat
     monkeypatch.setattr(files_service, "get_object_bytes", _boom)
 
     resp = await client.get(
-        "/files-by-key/detail", params={"key": "uploads/huge.bin"}
+        "/files-by-key/detail", params={"key": "video/huge.bin"}
     )
 
     assert resp.status_code == 413
@@ -148,4 +148,4 @@ def test_get_object_bytes_wraps_streaming_read_failure(monkeypatch):
     monkeypatch.setattr(b2_object, "get_s3_client", lambda: _Client())
 
     with pytest.raises(RuntimeError):
-        b2_object.get_object_bytes("uploads/big.bin")
+        b2_object.get_object_bytes("video/big.bin")
