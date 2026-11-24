@@ -1,0 +1,37 @@
+packages:
+  - "apps/*"
+  - "packages/*"
+
+# Dependencies whose install/build scripts are trusted to run during
+# `pnpm install` (including a fresh `pnpm run setup`); pnpm blocks all others by
+# default and fails the install with ERR_PNPM_IGNORED_BUILDS. esbuild's
+# postinstall links its platform binary, so without this a fresh clone cannot
+# run vitest.
+#
+# Two keys on purpose: pnpm 11 reads `allowBuilds` (a map) and no longer knows
+# `onlyBuiltDependencies`; pnpm 10 reads `onlyBuiltDependencies` (a list) and
+# does not know `allowBuilds`. An unrecognised key here is ignored rather than
+# rejected, so declaring both keeps a fresh clone installable on either major.
+# Keep the two lists identical.
+allowBuilds:
+  esbuild: true
+  msw: true
+  sharp: true
+  unrs-resolver: true
+onlyBuiltDependencies:
+  - esbuild
+  - msw
+  - sharp
+  - unrs-resolver
+
+# Transitive-dependency version pins (advisory remediation). pnpm 10 and 11 read
+# `overrides` from this file; the `pnpm` field in package.json is no longer read
+# by pnpm 11 and must not be used.
+overrides:
+  "@humanfs/node@<0.16.8": "^0.16.8"
+  "brace-expansion@<1.1.21": "^1.1.21"
+  "brace-expansion@>=4.0.0 <5.0.12": "^5.0.12"
+  "minimatch@>=7.0.0 <11.0.1": "^11.0.1"
+  "source-map-js@<1.2.2": "^1.2.2"
+  "vite@<6.4.4": "^6.4.4"
+  "zod@<4.6.6": "^4.6.7"
