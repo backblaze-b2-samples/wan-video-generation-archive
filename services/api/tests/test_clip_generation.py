@@ -120,6 +120,19 @@ def test_delete_removes_objects_and_line():
     assert "video/manifests/demo.jsonl" not in s3.objects
 
 
+def test_delete_removes_manifest_line_before_objects():
+    """A failed manifest write must leave the clip's objects in place, never a dangling line."""
+    services, s3, _, _ = make_services()
+    a = _generate(services)
+    _generate(services)
+    s3.fail_put_for = {".jsonl"}
+    with pytest.raises(RuntimeError):
+        services.clips.delete("demo", a.clip_id)
+    assert a.output_key in s3.objects
+    assert a.settings_key in s3.objects
+    assert a.clip_id in [r.clip_id for r in services.clips.manifests.read("demo")]
+
+
 def test_list_and_projects_summaries():
     services, _, _, _ = make_services()
     _generate(services, project="alpha", prompt="snowy fox")

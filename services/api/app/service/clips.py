@@ -272,7 +272,9 @@ class ClipService:
     def delete(self, project: str, clip_id: str) -> DeleteClipResponse:
         record = self.get(project, clip_id)
         keys = [record.output_key, record.settings_key]
+        # Manifest line first: a crash midway leaves an orphaned object, never a
+        # manifest entry pointing at a missing object (same order as the age job).
+        self.manifests.remove(project, clip_id)
         for key in keys:
             self.store.delete(key)
-        self.manifests.remove(project, clip_id)
         return DeleteClipResponse(clip_id=clip_id, deleted_keys=keys)

@@ -70,6 +70,19 @@ def test_archived_clips_are_not_moved_twice():
     assert len(s3.copies) == copies
 
 
+def test_kept_count_excludes_already_archived_clips():
+    services, _, _, clock = make_services()
+    _at(services, clock, datetime(2026, 1, 1, tzinfo=UTC))
+    services.archive.age("demo", as_of=datetime(2026, 3, 1, tzinfo=UTC))
+    _at(services, clock, datetime(2026, 4, 1, tzinfo=UTC))
+    _at(services, clock, datetime(2026, 5, 25, tzinfo=UTC))
+
+    result = services.archive.age("demo", older_than_days=30, as_of=datetime(2026, 6, 1, tzinfo=UTC))
+
+    assert len(result.moved) == 1
+    assert result.kept_count == 1
+
+
 def test_failed_verification_keeps_recent_copy_and_manifest():
     services, s3, _, clock = make_services()
     clip = _at(services, clock, datetime(2026, 1, 1, tzinfo=UTC))

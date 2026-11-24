@@ -84,7 +84,7 @@ class ArchiveService:
             as_of=now,
             cutoff=cutoff,
             moved=moves,
-            kept_count=len(records) - len(due),
+            kept_count=sum(1 for r in records if r.tier == "recent") - len(due),
             dry_run=dry_run,
         )
 

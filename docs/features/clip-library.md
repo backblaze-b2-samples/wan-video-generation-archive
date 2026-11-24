@@ -22,7 +22,7 @@ Find any clip, recent or archived, and see exactly how it was made.
 
 ## Outputs
 - `ClipList` (`items: ClipRecord[]`, newest first), `ProjectSummary[]`, one `ClipRecord`
-- Delete: `DeleteClipResponse` (`clip_id`, `deleted_keys`); removes the MP4, the sidecar and the manifest line
+- Delete: `DeleteClipResponse` (`clip_id`, `deleted_keys`); removes the manifest line first, then the MP4 and the sidecar, so a crash midway leaves at worst an orphaned object, never a manifest line pointing at a missing object
 
 ## Flow
 - The Library reads manifests, not a bucket listing, so every card is a manifest entry and resolves to the clip's current key in either tier

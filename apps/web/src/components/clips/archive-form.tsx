@@ -53,7 +53,7 @@ export function ArchiveForm() {
       {
         onSuccess: (r) =>
           toast.success(r.dry_run ? "Dry run finished" : "Age job finished", {
-            description: `${r.moved.length} ${r.dry_run ? "would move" : "moved"}, ${r.kept_count} kept`,
+            description: `${r.moved.length} ${r.dry_run ? "would move" : "moved"}, ${r.kept_count} kept in Recent`,
           }),
         onError: (e) => toast.error("Age job failed", { description: e.message }),
       },
@@ -114,7 +114,7 @@ export function ArchiveForm() {
         <Card>
           <CardHeader className="border-b border-border py-4 px-5">
             <CardTitle className="card-title">
-              {result.dry_run ? "Would move" : "Moved"} {result.moved.length}, kept {result.kept_count}
+              {result.dry_run ? "Would move" : "Moved"} {result.moved.length}, kept in Recent {result.kept_count}
             </CardTitle>
           </CardHeader>
           <CardContent className="p-5 space-y-3 text-sm">

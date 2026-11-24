@@ -20,7 +20,7 @@ Move clips past a configurable age out of the working prefix into a dated archiv
 - `older_than_days?` (default `ARCHIVE_AFTER_DAYS`, 30), `as_of?` (clock override, default now), `dry_run` (API default false; the UI defaults it on)
 
 ## Outputs
-- `AgeJobResult`: `project`, `as_of`, `cutoff` (`as_of - older_than_days`), `moved: ArchiveMove[]` (`clip_id`, `from_key`, `to_key`, `created_at`), `kept_count`, `dry_run`
+- `AgeJobResult`: `project`, `as_of`, `cutoff` (`as_of - older_than_days`), `moved: ArchiveMove[]` (`clip_id`, `from_key`, `to_key`, `created_at`), `kept_count` (recent clips not yet due; already-archived clips are not counted), `dry_run`
 - Moved clips live at `video/archive/<project>/<YYYY-MM>/<clip_id>.mp4` (+ `.json`), the month taken from `created_at`
 
 ## Flow

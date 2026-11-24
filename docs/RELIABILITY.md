@@ -29,6 +29,7 @@ Reliability expectations and practices for this project.
 
 - Per clip the age job copies the MP4 server-side (`MetadataDirective=COPY`, single part so the metadata is copied verbatim), heads the copy and checks its size and `sha256` metadata, copies and heads the sidecar, rewrites the manifest line, and only then deletes the recent copies.
 - A failure before the manifest rewrite leaves the clip where it was (the job reports the error; a partial archive copy may remain and is overwritten by the next run). A failure after it leaves an extra recent copy, never a missing clip: the manifest always names a key that exists.
+- Deleting a clip from the Library uses the same rule: it removes the manifest line first, then the MP4 and the sidecar. A crash midway leaves an orphaned object, never a manifest line naming a missing key.
 - Age is computed from `created_at` in the manifest, not `LastModified`, because a copy resets `LastModified`.
 
 ## Generation Jobs

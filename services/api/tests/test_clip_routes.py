@@ -105,12 +105,19 @@ async def test_explorer_refuses_to_delete_managed_keys(client, monkeypatch, key)
     assert deleted == []
 
 
-def test_s3_client_user_agent_and_endpoint(monkeypatch):
-    from app.config import settings
+@pytest.fixture
+def fresh_s3_client_cache():
     from app.repo import b2_client
 
-    monkeypatch.setattr(settings, "b2_region", "eu-central-003")
     b2_client.get_s3_client.cache_clear()
-    client = b2_client.get_s3_client()
+    yield b2_client.get_s3_client
+    b2_client.get_s3_client.cache_clear()
+
+
+def test_s3_client_user_agent_and_endpoint(monkeypatch, fresh_s3_client_cache):
+    from app.config import settings
+
+    monkeypatch.setattr(settings, "b2_region", "test-region-001")
+    client = fresh_s3_client_cache()
     assert client.meta.config.user_agent_extra == "b2ai-wan-video-generation-archive"
-    assert client.meta.endpoint_url == "https://s3.eu-central-003.backblazeb2.com"
+    assert client.meta.endpoint_url == "https://s3.test-region-001.backblazeb2.com"
