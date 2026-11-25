@@ -52,5 +52,10 @@
   ],
   "attribution_token": "b2ai-wan-video-generation-archive",
   "repo": { "org": "backblaze-b2-samples", "name": "wan-video-generation-archive" },
-  "screenshots": []
+  "screenshots": [
+    {"path": "docs/images/clip-library.png", "alt": "Clip library with recent and archived Wan clips, each labelled AI-generated with its project and seed", "caption": "**Library**: every generated clip, recent or archived, with its prompt, seed, tier and AI-generated label, filterable by project and tier."},
+    {"path": "docs/images/clip-detail.png", "alt": "Clip detail page playing an archived sailboat clip above its full manifest entry", "caption": "**Clip**: play one clip, share it by expiring link or regenerate it, and read its full manifest entry (seed, pinned model revision, license, checksum, B2 keys)."},
+    {"path": "docs/images/generate.png", "alt": "Generate form with prompt, project and Wan model settings", "caption": "**Generate**: queue a text-to-video job on a pinned Wan model, with resolution, frames, steps and seed suggested for this machine."},
+    {"path": "docs/images/archive.png", "alt": "Archive age job form with project, age threshold and dry-run toggle", "caption": "**Archive**: move clips older than N days from the recent tier to the archive prefix, with a dry-run preview and live share links respected."}
+  ]
 }

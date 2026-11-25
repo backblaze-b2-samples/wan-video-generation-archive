@@ -30,7 +30,23 @@ for video: generate on your own GPU, record how each clip was made, age it into
 an archive tier, and share it by signed link.
 
 <!-- gen:begin readme-screenshots -->
+## What it looks like
 
+**Library**: every generated clip, recent or archived, with its prompt, seed, tier and AI-generated label, filterable by project and tier.
+
+![Clip library with recent and archived Wan clips, each labelled AI-generated with its project and seed](docs/images/clip-library.png)
+
+**Clip**: play one clip, share it by expiring link or regenerate it, and read its full manifest entry (seed, pinned model revision, license, checksum, B2 keys).
+
+![Clip detail page playing an archived sailboat clip above its full manifest entry](docs/images/clip-detail.png)
+
+**Generate**: queue a text-to-video job on a pinned Wan model, with resolution, frames, steps and seed suggested for this machine.
+
+![Generate form with prompt, project and Wan model settings](docs/images/generate.png)
+
+**Archive**: move clips older than N days from the recent tier to the archive prefix, with a dry-run preview and live share links respected.
+
+![Archive age job form with project, age threshold and dry-run toggle](docs/images/archive.png)
 <!-- gen:end readme-screenshots -->
 
 ## How it works
