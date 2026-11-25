@@ -78,7 +78,7 @@ services/api/
 ## Deployment
 
 - **Local dev**: `pnpm dev` runs both services via `concurrently` (web `localhost:3000`, API `localhost:8000`). With the model stack installed and `WAN_MODEL=wan2.1-t2v-1.3b`, generation runs on a smaller CUDA GPU or, best effort, Apple MPS.
-- **GPU host**: the same two processes on one CUDA machine (validated on a Vultr A40), reached through an SSH tunnel. Runbook: [infra/gpu-vm/README.md](infra/gpu-vm/README.md).
+- **GPU host**: the same two processes on one CUDA machine (targets a Vultr A40 or any single CUDA GPU with at least 24 GB), reached through an SSH tunnel. Runbook: [infra/gpu-vm/README.md](infra/gpu-vm/README.md).
 - No serverless target: a torch GPU worker cannot run on Vercel or Railway, so `deployment_targets` is empty and the starter kit's Vercel and Railway configs were removed.
 
 External provisioning and deployment remain explicit user-approved actions.
