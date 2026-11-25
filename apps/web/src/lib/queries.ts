@@ -2,6 +2,7 @@
 
 import { useEffect } from "react";
 import {
+  keepPreviousData,
   useMutation,
   useQuery,
   useQueryClient,
@@ -194,6 +195,8 @@ export function useClips(project?: string, tier = "all", q?: string) {
   return useQuery<ClipList, ApiError>({
     queryKey: qk.clips(project, tier, q),
     queryFn: () => getClips(project, tier, q),
+    // A new search or filter keeps the current grid on screen while it loads.
+    placeholderData: keepPreviousData,
   });
 }
 
@@ -227,7 +230,7 @@ export function useJobs() {
 
 /**
  * Poll one job until it finishes. When it succeeds the new clip exists, so the
- * clip views are invalidated once.
+ * clip views are invalidated once; either outcome refreshes the job list.
  */
 export function useJob(jobId: string | undefined) {
   const qc = useQueryClient();
@@ -240,6 +243,9 @@ export function useJob(jobId: string | undefined) {
   const status = query.data?.status;
   useEffect(() => {
     if (status === "succeeded") invalidateClipViews(qc);
+    // The job list stops polling once nothing is active, so refresh it now or
+    // its row keeps the last running stage ("saving") with a spinner.
+    if (status === "succeeded" || status === "failed") qc.invalidateQueries({ queryKey: qk.jobs() });
   }, [qc, status]);
   return query;
 }
@@ -272,6 +278,7 @@ export function useDeleteClip() {
 
 /** A share link is minted per click (it expires), so it is a mutation, never cached. */
 export function useShareClip() {
+  const qc = useQueryClient();
   return useMutation<
     ShareLink,
     ApiError,
@@ -279,15 +286,44 @@ export function useShareClip() {
   >({
     mutationFn: ({ project, clipId, expiresInSeconds }) =>
       shareClip(project, clipId, expiresInSeconds),
+    // A link for a recent clip writes `share_expires_at` (the archive hold).
+    onSuccess: (_link, { project, clipId }) =>
+      qc.invalidateQueries({ queryKey: [...qk.clip(), project, clipId] }),
   });
+}
+
+/**
+ * Apply a finished (non-dry-run) age job to a cached project list, so the
+ * recent/archived counts change with the result card instead of after the
+ * refetch. Exported for tests; `useAgeProject` is its only production caller.
+ */
+export function applyAgeResult(
+  projects: ProjectSummary[] | undefined,
+  result: AgeJobResult,
+): ProjectSummary[] | undefined {
+  if (!projects || result.dry_run) return projects;
+  const moved = result.moved.length;
+  return projects.map((p) =>
+    p.name === result.project
+      ? {
+          ...p,
+          recent_count: Math.max(0, p.recent_count - moved),
+          archive_count: p.archive_count + moved,
+          held_count: Math.max(0, p.held_count - result.released.length),
+        }
+      : p,
+  );
 }
 
 export function useAgeProject() {
   const qc = useQueryClient();
   return useMutation<AgeJobResult, ApiError, { project: string; body: AgeJobRequest }>({
     mutationFn: ({ project, body }) => ageProject(project, body),
-    onSuccess: (result) => {
-      if (!result.dry_run) invalidateClipViews(qc);
+    onSuccess: async (result) => {
+      if (result.dry_run) return;
+      await qc.cancelQueries({ queryKey: qk.projects() });
+      qc.setQueryData<ProjectSummary[]>(qk.projects(), (prev) => applyAgeResult(prev, result));
+      invalidateClipViews(qc);
     },
   });
 }

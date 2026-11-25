@@ -3,7 +3,7 @@
 Lets the GPU host (and a cron age job) work without the web UI:
 
     python scripts/wan_archive.py generate --project demo --prompt "A red fox..." [--seed 42]
-    python scripts/wan_archive.py age --project demo [--older-than-days 30] [--as-of 2026-12-31] [--dry-run]
+    python scripts/wan_archive.py age --project demo [--older-than-days 30] [--as-of 2026-12-31] [--dry-run] [--include-held]
     python scripts/wan_archive.py lookup --project demo [--clip-id ID] [--q fox] [--tier recent]
     python scripts/wan_archive.py share --project demo --clip-id ID [--ttl 3600]
     python scripts/wan_archive.py regenerate --project demo --clip-id ID
@@ -75,6 +75,10 @@ def build_parser() -> argparse.ArgumentParser:
     age.add_argument("--older-than-days", type=int)
     age.add_argument("--as-of", help="ISO date/time used as 'now' (default: now)")
     age.add_argument("--dry-run", action="store_true")
+    age.add_argument(
+        "--include-held", action="store_true",
+        help="also move clips held by a live share link (those links stop working)",
+    )
 
     look = sub.add_parser("lookup", help="print manifest entries")
     look.add_argument("--project")
@@ -110,7 +114,8 @@ def run(args: argparse.Namespace, services: Services) -> int:
             _dump(services.clips.run(services.clips.prepare_generate(req), _progress))
         elif args.command == "age":
             result = services.archive.age(
-                args.project, args.older_than_days, _parse_as_of(args.as_of), args.dry_run
+                args.project, args.older_than_days, _parse_as_of(args.as_of), args.dry_run,
+                args.include_held,
             )
             _dump(result)
         elif args.command == "lookup":

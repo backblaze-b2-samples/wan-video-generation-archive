@@ -12,7 +12,7 @@ Security principles and implementation for the Wan Video Generation Archive samp
 
 ## Share Links
 
-- A share link is a presigned GET for exactly one key (the clip's current key), signed with `ResponseContentType=video/mp4` and `Content-Disposition: inline`.
+- A share link is a presigned GET for exactly one key (the clip's current key), signed with `ResponseContentType=video/mp4` and `Content-Disposition: inline`. The age job does not move a recent clip while a link for it is live (`share_expires_at`), so a link is not broken early by archiving.
 - Lifetime defaults to `SHARE_LINK_TTL_SECONDS` (3600) and is clamped to 60..604800 seconds (7 days is the S3 presigned-URL ceiling). A link cannot be revoked early except by rotating the application key, so prefer the shortest lifetime that works.
 - **No public bucket.** Nothing requires `B2_PUBLIC_URL_BASE`; keep the bucket private. Anyone holding a link can play that one clip until it expires, nothing else.
 

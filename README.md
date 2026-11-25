@@ -156,9 +156,12 @@ Keep the bucket **private**: share links are presigned, so nothing needs to be p
 services/api/.venv/bin/pip install -r services/api/requirements-model.txt
 ```
 
-On a laptop, set `WAN_MODEL=wan2.1-t2v-1.3b` in `.env` to use the development
-model. The first generation downloads the pinned weights into `HF_HOME`, which
-takes several minutes.
+On a laptop, the Generate form pre-selects the 1.3B development model: the API
+reports TI2V-5B as unavailable without a CUDA GPU of 24 GB or more, greys it out
+and refuses it before anything downloads. Set `WAN_MODEL=wan2.1-t2v-1.3b` in
+`.env` to make the CLI use it too. The first generation downloads the pinned
+weights into `HF_HOME`, which takes several minutes; the job card shows the
+download, then the model load, then each step.
 
 **4. Run it**
 
@@ -169,9 +172,14 @@ pnpm dev
 Web at `localhost:3000`, API at `localhost:8000` (Swagger UI at `/docs`). Open
 **Generate**, keep the defaults, enter a prompt such as "A red fox trotting
 through fresh snow at dawn, cinematic", and submit. The panel beside the form
-shows each denoising step; when it finishes, **Open clip** shows the player, the
-manifest entry, **Share link**, **Regenerate** and **Delete**. **Archive** runs
-the age job (dry run by default; set *As of* to a future date to preview aging).
+shows the download, the model load and each denoising step (it picks the job up
+again after a reload); when it finishes, the page opens the clip: the player, the
+manifest entry, **Share link**, **Regenerate**, **Archive...** and **Delete**. Off
+CUDA (a Mac) the form starts from a light preset (low, 17 frames, 20 steps).
+**Archive** runs the age job (dry run by default; set *As of* to a future date to
+preview aging, or *Older than* to 0 to include a clip made today). A clip with a
+live share link stays in Recent until the link expires, so the link keeps working;
+turn on *Archive held clips anyway* to move it now (its live links stop working).
 
 The same operations work headless, which is how the GPU host and a cron age job use it:
 

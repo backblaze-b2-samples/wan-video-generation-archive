@@ -55,7 +55,8 @@ export function ShareDialog({ project, clipId }: { project: string; clipId: stri
           <DialogTitle>Share this clip</DialogTitle>
           <DialogDescription>
             A presigned link plays the clip in a browser without making the bucket public. It
-            stops working when it expires.
+            stops working when it expires. It is signed for the clip&apos;s current key, so the
+            age job keeps a recent clip in Recent until its last link expires.
           </DialogDescription>
         </DialogHeader>
         <div role="radiogroup" aria-label="Link lifetime" className="inline-flex rounded-md border border-border p-0.5">
@@ -96,6 +97,7 @@ export function ShareDialog({ project, clipId }: { project: string; clipId: stri
             </div>
             <p className="text-xs text-muted-foreground">
               Expires {new Date(share.data.expires_at).toLocaleString()} · {share.data.tier} tier
+              {share.data.tier === "recent" && " · not archived before then"}
             </p>
           </div>
         )}

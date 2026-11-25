@@ -14,11 +14,11 @@ from datetime import datetime
 
 from app.service.clips import PreparedGeneration, utcnow
 from app.types.clips import ClipRecord, GenerationJob
-from app.types.generation import StepCallback
+from app.types.generation import StageCallback, StepCallback
 
 logger = logging.getLogger(__name__)
 
-Runner = Callable[[PreparedGeneration, StepCallback], ClipRecord]
+Runner = Callable[[PreparedGeneration, StepCallback, StageCallback], ClipRecord]
 MAX_HISTORY = 200
 
 
@@ -39,6 +39,7 @@ class JobQueue:
             kind=kind,
             status="queued",
             project=prepared.project,
+            prompt=prepared.spec.prompt,
             step=0,
             total_steps=prepared.spec.num_inference_steps,
             regenerated_from=prepared.regenerated_from,
@@ -73,7 +74,11 @@ class JobQueue:
 
     def _update(self, job_id: str, **changes) -> None:
         with self._lock:
-            self._jobs[job_id] = self._jobs[job_id].model_copy(update=changes)
+            job = self._jobs[job_id]
+            if "stage" in changes and changes["stage"] != job.stage:
+                # The UI counts seconds in the current stage (e.g. a long model load).
+                changes["stage_started_at"] = self._clock() if changes["stage"] else None
+            self._jobs[job_id] = job.model_copy(update=changes)
 
     def _trim(self) -> None:
         finished = [j for j in self._jobs.values() if j.status in ("succeeded", "failed")]
@@ -93,20 +98,26 @@ class JobQueue:
         self._update(job_id, status="running", started_at=self._clock())
 
         def on_step(step: int, total: int) -> None:
-            self._update(job_id, step=step, total_steps=total)
+            self._update(
+                job_id, stage="generating", stage_detail=None, step=step, total_steps=total
+            )
+
+        def on_stage(stage: str, detail: str | None) -> None:
+            self._update(job_id, stage=stage, stage_detail=detail)
 
         try:
-            record = self._runner(prepared, on_step)
+            record = self._runner(prepared, on_step, on_stage)
         except Exception as e:
             logger.error("Generation job %s failed", job_id, exc_info=True)
             self.failed += 1
             self._update(
                 job_id, status="failed", error=str(e) or type(e).__name__,
+                stage=None, stage_detail=None,
                 finished_at=self._clock(),
             )
             return
         self.succeeded += 1
         self._update(
-            job_id, status="succeeded", clip_id=record.clip_id,
+            job_id, status="succeeded", clip_id=record.clip_id, stage=None, stage_detail=None,
             step=prepared.spec.num_inference_steps, finished_at=self._clock(),
         )

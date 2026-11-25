@@ -21,6 +21,12 @@
             "title": "Dry Run",
             "type": "boolean"
           },
+          "include_held": {
+            "default": false,
+            "description": "Also move clips held by a live share link; those links stop working.",
+            "title": "Include Held",
+            "type": "boolean"
+          },
           "older_than_days": {
             "anyOf": [
               {
@@ -54,7 +60,16 @@
             "title": "Dry Run",
             "type": "boolean"
           },
+          "held": {
+            "description": "Old enough, but kept in recent until their share link expires.",
+            "items": {
+              "$ref": "#/components/schemas/ArchiveHold"
+            },
+            "title": "Held",
+            "type": "array"
+          },
           "kept_count": {
+            "description": "Clips left in recent, including `held` ones.",
             "title": "Kept Count",
             "type": "integer"
           },
@@ -68,6 +83,14 @@
           "project": {
             "title": "Project",
             "type": "string"
+          },
+          "released": {
+            "description": "Clips moved despite a live share link (include_held); those links now fail.",
+            "items": {
+              "$ref": "#/components/schemas/ArchiveHold"
+            },
+            "title": "Released",
+            "type": "array"
           }
         },
         "required": [
@@ -76,9 +99,31 @@
           "cutoff",
           "moved",
           "kept_count",
+          "held",
+          "released",
           "dry_run"
         ],
         "title": "AgeJobResult",
+        "type": "object"
+      },
+      "ArchiveHold": {
+        "description": "A clip old enough to archive, held in recent while a share link for its key is live.",
+        "properties": {
+          "clip_id": {
+            "title": "Clip Id",
+            "type": "string"
+          },
+          "share_expires_at": {
+            "format": "date-time",
+            "title": "Share Expires At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "clip_id",
+          "share_expires_at"
+        ],
+        "title": "ArchiveHold",
         "type": "object"
       },
       "ArchiveMove": {
@@ -271,6 +316,19 @@
             "title": "Sha256",
             "type": "string"
           },
+          "share_expires_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Latest expiry of a share link minted while the clip was recent. A presigned link is bound to one key, so the age job keeps the clip in recent until then.",
+            "title": "Share Expires At"
+          },
           "size_bytes": {
             "title": "Size Bytes",
             "type": "integer"
@@ -328,7 +386,8 @@
           "ai_generated",
           "ai_label",
           "generation_seconds",
-          "regenerated_from"
+          "regenerated_from",
+          "share_expires_at"
         ],
         "title": "ClipRecord",
         "type": "object"
@@ -769,6 +828,10 @@
             "title": "Project",
             "type": "string"
           },
+          "prompt": {
+            "title": "Prompt",
+            "type": "string"
+          },
           "regenerated_from": {
             "anyOf": [
               {
@@ -779,6 +842,49 @@
               }
             ],
             "title": "Regenerated From"
+          },
+          "stage": {
+            "anyOf": [
+              {
+                "enum": [
+                  "downloading",
+                  "loading",
+                  "generating",
+                  "saving"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "What a running job is doing now; null when not running.",
+            "title": "Stage"
+          },
+          "stage_detail": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Human-readable progress for the stage (e.g. bytes downloaded).",
+            "title": "Stage Detail"
+          },
+          "stage_started_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "When the current stage began; null when not running.",
+            "title": "Stage Started At"
           },
           "started_at": {
             "anyOf": [
@@ -816,6 +922,10 @@
           "kind",
           "status",
           "project",
+          "prompt",
+          "stage",
+          "stage_detail",
+          "stage_started_at",
           "step",
           "total_steps",
           "clip_id",
@@ -826,6 +936,29 @@
           "finished_at"
         ],
         "title": "GenerationJob",
+        "type": "object"
+      },
+      "GenerationPreset": {
+        "properties": {
+          "num_frames": {
+            "title": "Num Frames",
+            "type": "integer"
+          },
+          "num_inference_steps": {
+            "title": "Num Inference Steps",
+            "type": "integer"
+          },
+          "resolution": {
+            "title": "Resolution",
+            "type": "string"
+          }
+        },
+        "required": [
+          "resolution",
+          "num_frames",
+          "num_inference_steps"
+        ],
+        "title": "GenerationPreset",
         "type": "object"
       },
       "HTTPValidationError": {
@@ -865,6 +998,16 @@
       "ModelInfo": {
         "description": "One pinned registry entry plus whether it is loaded on the GPU now.",
         "properties": {
+          "available": {
+            "description": "Whether this model can run on the API's device; checked before any download.",
+            "title": "Available",
+            "type": "boolean"
+          },
+          "default": {
+            "description": "The model the Generate form pre-selects: WAN_MODEL if it can run, else the first model that can.",
+            "title": "Default",
+            "type": "boolean"
+          },
           "default_guidance": {
             "title": "Default Guidance",
             "type": "number"
@@ -916,6 +1059,10 @@
             "title": "Loaded",
             "type": "boolean"
           },
+          "recommended": {
+            "$ref": "#/components/schemas/GenerationPreset",
+            "description": "Settings the Generate form starts from: the demo preset on CUDA, the light preset elsewhere, where every step is much slower."
+          },
           "resolutions": {
             "items": {
               "$ref": "#/components/schemas/ResolutionInfo"
@@ -927,6 +1074,30 @@
             "description": "Exact 40-hex Hugging Face commit the weights load from.",
             "title": "Revision",
             "type": "string"
+          },
+          "run_device": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Device this API generates on (cuda, mps or cpu), probed without loading weights; null when it cannot be determined.",
+            "title": "Run Device"
+          },
+          "unavailable_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Why the model cannot run here; null when available.",
+            "title": "Unavailable Reason"
           }
         },
         "required": [
@@ -941,7 +1112,12 @@
           "default_steps",
           "default_guidance",
           "loaded",
-          "device"
+          "device",
+          "available",
+          "unavailable_reason",
+          "default",
+          "run_device",
+          "recommended"
         ],
         "title": "ModelInfo",
         "type": "object"
@@ -954,6 +1130,12 @@
           },
           "clip_count": {
             "title": "Clip Count",
+            "type": "integer"
+          },
+          "held_count": {
+            "default": 0,
+            "description": "Recent clips held there by a live share link (counted in recent_count).",
+            "title": "Held Count",
             "type": "integer"
           },
           "last_generated_at": {
@@ -986,6 +1168,7 @@
           "clip_count",
           "recent_count",
           "archive_count",
+          "held_count",
           "manifest_key",
           "last_generated_at"
         ],

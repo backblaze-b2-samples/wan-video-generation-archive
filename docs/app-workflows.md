@@ -11,24 +11,24 @@ User journeys inside the application.
 - Chooses model, resolution, frames and steps from selectors; seed and guidance are free fields whose defaults (random seed, 5.0) are shown as placeholders and descriptions
 - Submits: the API validates against the pinned registry and answers with a queued job. The side panel polls it, showing step N of total and "Waiting for the GPU" while another job runs
 - First run on a fresh host: the job sits at step 0 while the pinned weights download from huggingface.co
-- On success: "Open clip" goes to `/clip`. On failure: the error is shown on the job, and nothing was written to B2
+- On success: the page opens the new clip on `/clip` by itself ("Open clip" stays on the job card). On failure: the error is shown on the job, and nothing was written to B2
 - See: [Clip Generation](features/clip-generation.md)
 
 ## Find a Clip
 
 - User opens `/` (the Library)
-- Filters by project and tier (recent, archive, all) and searches the prompt or clip id; cards are newest first
+- Filters by project and tier (recent, archive, all) and searches the prompt or clip id (the current cards stay visible with a "Searching..." indicator while results load); cards are newest first, and a clip held in Recent by a live share link shows "shared until <time>"
 - "Play" on a card plays the clip inline; the prompt opens the detail page
 - The detail page shows the player, both labels (tier, AI-generated) and the full manifest entry: seed, model, 40-hex revision, license, size, steps, guidance, device, library versions, keys, SHA-256, timestamps, and `regenerated_from`
-- From there: **Share link** (choose 15 min, 1 h, 24 h or 7 days, copy the link), **Regenerate** (queues a new clip from the same prompt, seed and revision; disabled if the revision is no longer pinned), **Use these settings** (opens Generate pre-filled), **Delete** (confirm dialog; removes the MP4, sidecar and manifest line, then returns to the Library)
+- From there: **Share link** (choose 15 min, 1 h, 24 h or 7 days, copy the link), **Regenerate** (queues a new clip from the same prompt, seed and revision; disabled if the revision is no longer pinned), **Use these settings** (opens Generate pre-filled), **Archive...** (recent clips only: opens `/archive` with the project and the clip's age pre-filled; for a clip held by a live share link the page explains the hold and the link turns on "Archive held clips anyway"), **Delete** (confirm dialog; removes the MP4, sidecar and manifest line, then returns to the Library)
 - Editing a clip is intentionally not offered: its settings are its provenance
 - See: [Clip Library](features/clip-library.md)
 
 ## Archive Older Clips
 
 - User opens `/archive`
-- Picks a project (it shows how many clips are recent and archived), optionally sets "Older than (days)" (empty means the server default, 30) and "As of" (empty means now; a future date previews aging)
-- Dry run is on by default: "Preview" lists every clip that would move, from its recent key to its archive key, and how many stay
+- Picks a project (the one with the newest clip is preselected; it shows how many clips are recent, held by a live share link, and archived), optionally sets "Older than (days)" (empty means the server default, 30) and "As of" (empty means now; a future date previews aging)
+- Dry run is on by default: "Preview" lists every clip that would move, from its recent key to its archive key, and how many stay. If nothing is old enough it says so and suggests Older than = 0; clips held by a live share link are listed with the link's expiry. "Archive held clips anyway (live links stop working)" moves them too, after a warning that their outstanding links stop working
 - Turning dry run off and running moves them: each is copied, verified by checksum, recorded in the manifest, then removed from the recent tier. The Library and explorer refresh
 - The same job runs headless with `wan_archive.py age`, for a cron schedule on the GPU host
 - See: [Archive Age Job](features/archive-age-job.md)

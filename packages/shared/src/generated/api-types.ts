@@ -12,6 +12,8 @@ export interface AgeJobRequest {
   /** Clock override; defaults to now. A future date previews aging. */
   as_of?: string | null;
   dry_run?: boolean;
+  /** Also move clips held by a live share link; those links stop working. */
+  include_held?: boolean;
   /** Defaults to ARCHIVE_AFTER_DAYS (30). */
   older_than_days?: number | null;
 }
@@ -20,9 +22,26 @@ export interface AgeJobResult {
   as_of: string;
   cutoff: string;
   dry_run: boolean;
+  /** Old enough, but kept in recent until their share link expires. */
+  held: ArchiveHold[];
+  /** Clips left in recent, including `held` ones. */
   kept_count: number;
   moved: ArchiveMove[];
   project: string;
+  /**
+   * Clips moved despite a live share link (include_held); those links now
+   * fail.
+   */
+  released: ArchiveHold[];
+}
+
+/**
+ * A clip old enough to archive, held in recent while a share link for its
+ * key is live.
+ */
+export interface ArchiveHold {
+  clip_id: string;
+  share_expires_at: string;
 }
 
 export interface ArchiveMove {
@@ -65,6 +84,12 @@ export interface ClipRecord {
   /** Current key of the settings sidecar JSON. */
   settings_key: string;
   sha256: string;
+  /**
+   * Latest expiry of a share link minted while the clip was recent. A
+   * presigned link is bound to one key, so the age job keeps the clip in
+   * recent until then.
+   */
+  share_expires_at: string | null;
   size_bytes: number;
   tier: string;
   torch_version: string | null;
@@ -172,11 +197,24 @@ export interface GenerationJob {
   job_id: string;
   kind: string;
   project: string;
+  prompt: string;
   regenerated_from: string | null;
+  /** What a running job is doing now; null when not running. */
+  stage: string | null;
+  /** Human-readable progress for the stage (e.g. bytes downloaded). */
+  stage_detail: string | null;
+  /** When the current stage began; null when not running. */
+  stage_started_at: string | null;
   started_at: string | null;
   status: string;
   step: number;
   total_steps: number;
+}
+
+export interface GenerationPreset {
+  num_frames: number;
+  num_inference_steps: number;
+  resolution: string;
 }
 
 export interface HTTPValidationError {
@@ -197,6 +235,16 @@ export interface HealthStatus {
 
 /** One pinned registry entry plus whether it is loaded on the GPU now. */
 export interface ModelInfo {
+  /**
+   * Whether this model can run on the API's device; checked before any
+   * download.
+   */
+  available: boolean;
+  /**
+   * The model the Generate form pre-selects: WAN_MODEL if it can run, else
+   * the first model that can.
+   */
+  default: boolean;
   default_guidance: number;
   default_steps: number;
   /** Device of the loaded pipeline; null when not loaded. */
@@ -208,14 +256,31 @@ export interface ModelInfo {
   label: string;
   license: string;
   loaded: boolean;
+  /**
+   * Settings the Generate form starts from: the demo preset on CUDA, the
+   * light preset elsewhere, where every step is much slower.
+   */
+  recommended: GenerationPreset;
   resolutions: ResolutionInfo[];
   /** Exact 40-hex Hugging Face commit the weights load from. */
   revision: string;
+  /**
+   * Device this API generates on (cuda, mps or cpu), probed without
+   * loading weights; null when it cannot be determined.
+   */
+  run_device: string | null;
+  /** Why the model cannot run here; null when available. */
+  unavailable_reason: string | null;
 }
 
 export interface ProjectSummary {
   archive_count: number;
   clip_count: number;
+  /**
+   * Recent clips held there by a live share link (counted in
+   * recent_count).
+   */
+  held_count: number;
   last_generated_at: string | null;
   manifest_key: string;
   name: string;

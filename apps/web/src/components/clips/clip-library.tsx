@@ -1,8 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { Archive, Clapperboard, Clock, Film, Play } from "lucide-react";
+import { Archive, Clapperboard, Clock, Film, Link2, Loader2, Play } from "lucide-react";
 
 import type { ClipRecord } from "@wan-video-generation-archive/shared";
 import { Badge } from "@/components/ui/badge";
@@ -19,11 +19,13 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { clipHref } from "@/lib/clip-links";
+import { clipHref, heldUntil } from "@/lib/clip-links";
 import { formatDate, humanizeBytes } from "@/lib/utils";
 import { useClips, usePreviewUrl, useProjects } from "@/lib/queries";
 
 const ALL = "__all__";
+/** Search waits this long after the last keystroke before querying the API. */
+export const SEARCH_DEBOUNCE_MS = 300;
 const TIERS = [
   { value: "all", label: "All tiers" },
   { value: "recent", label: "Recent" },
@@ -39,8 +41,15 @@ export function ClipLibrary() {
   const [project, setProject] = useState(ALL);
   const [tier, setTier] = useState("all");
   const [q, setQ] = useState("");
+  const [search, setSearch] = useState("");
+  useEffect(() => {
+    const t = setTimeout(() => setSearch(q.trim()), SEARCH_DEBOUNCE_MS);
+    return () => clearTimeout(t);
+  }, [q]);
   const { data: projects = [] } = useProjects();
-  const clips = useClips(project === ALL ? undefined : project, tier, q.trim() || undefined);
+  const clips = useClips(project === ALL ? undefined : project, tier, search || undefined);
+  // The grid keeps the previous results while a new search or filter loads.
+  const searching = q.trim() !== search || clips.isPlaceholderData;
 
   return (
     <div className="space-y-5">
@@ -69,6 +78,12 @@ export function ClipLibrary() {
           aria-label="Search clips"
           className="w-64"
         />
+        {searching && (
+          <span role="status" className="flex items-center gap-1.5 self-center text-xs text-muted-foreground">
+            <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden="true" />
+            Searching...
+          </span>
+        )}
       </div>
 
       {clips.isLoading ? (
@@ -78,6 +93,13 @@ export function ClipLibrary() {
       ) : clips.isError ? (
         <ErrorState error={clips.error} title="Couldn't load clips" onRetry={() => clips.refetch()} />
       ) : (clips.data?.items.length ?? 0) === 0 ? (
+        search || project !== ALL || tier !== "all" ? (
+          <EmptyState
+            icon={Film}
+            title={search ? `No clips match "${search}"` : "No clips match these filters"}
+            description="Search looks in prompts and clip ids, ignoring case. Clear the search or widen the project and tier filters."
+          />
+        ) : (
         <EmptyState
           icon={Film}
           title="No clips here yet"
@@ -91,8 +113,13 @@ export function ClipLibrary() {
             </Button>
           }
         />
+        )
       ) : (
-        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+        <div
+          className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3 transition-opacity data-[stale=true]:opacity-60"
+          data-stale={clips.isPlaceholderData}
+          aria-busy={clips.isPlaceholderData}
+        >
           {clips.data?.items.map((clip) => <ClipCard key={`${clip.project}/${clip.clip_id}`} clip={clip} />)}
         </div>
       )}
@@ -102,29 +129,47 @@ export function ClipLibrary() {
 
 function ClipCard({ clip }: { clip: ClipRecord }) {
   const [playing, setPlaying] = useState(false);
-  const preview = usePreviewUrl(clip.output_key, playing);
+  const videoRef = useRef<HTMLVideoElement>(null);
+  // Every card gets a presigned URL so its <video> can paint the first frame.
+  // preload="metadata" on a faststart MP4 fetches the index and that frame,
+  // not the whole clip; the #t fragment makes Safari paint it too.
+  const preview = usePreviewUrl(clip.output_key, true);
+  const held = heldUntil(clip);
+
+  const play = () => {
+    setPlaying(true);
+    void videoRef.current?.play().catch(() => undefined);
+  };
 
   return (
     <Card className="overflow-hidden">
-      <div className="relative aspect-video bg-muted">
-        {playing && preview.data ? (
+      <div className="relative aspect-video bg-black">
+        {preview.data ? (
           <video
-            src={preview.data.url}
-            controls
-            autoPlay
+            ref={videoRef}
+            src={`${preview.data.url}#t=0.1`}
+            preload="metadata"
+            controls={playing}
             loop
             muted
             playsInline
-            className="h-full w-full object-contain bg-black"
+            aria-label={`Clip ${clip.clip_id}`}
+            className="h-full w-full object-contain"
           />
-        ) : (
+        ) : preview.isLoading ? (
+          <Skeleton className="h-full w-full rounded-none" />
+        ) : null}
+        {!playing && (
           <button
             type="button"
-            onClick={() => setPlaying(true)}
-            className="flex h-full w-full items-center justify-center text-muted-foreground hover:text-foreground"
+            onClick={play}
+            disabled={!preview.data}
+            className="absolute inset-0 flex items-center justify-center text-white/90 hover:text-white disabled:cursor-default"
             aria-label={`Play clip ${clip.clip_id}`}
           >
-            <Play className="h-8 w-8" aria-hidden="true" />
+            <span className="rounded-full bg-black/50 p-3">
+              <Play className="h-6 w-6" aria-hidden="true" />
+            </span>
           </button>
         )}
       </div>
@@ -137,6 +182,12 @@ function ClipCard({ clip }: { clip: ClipRecord }) {
             {clip.tier === "archive" ? <Archive aria-hidden="true" /> : <Clock aria-hidden="true" />}
             {clip.tier}
           </Badge>
+          {held && (
+            <Badge variant="outline" title="A share link for this clip is live, so the age job keeps it in Recent until then">
+              <Link2 aria-hidden="true" />
+              shared until {held.toLocaleString()}
+            </Badge>
+          )}
           <Badge variant="outline">AI-generated</Badge>
           <span className="font-mono">{clip.project}</span>
           <span>· seed {clip.seed}</span>

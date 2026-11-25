@@ -1,8 +1,9 @@
 "use client";
 
+import type { ReactNode } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { RefreshCcw, SlidersHorizontal, Trash2 } from "lucide-react";
+import { Archive, RefreshCcw, SlidersHorizontal, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
 import type { ClipRecord } from "@wan-video-generation-archive/shared";
@@ -24,7 +25,14 @@ import {
 } from "@/components/ui/alert-dialog";
 import { ShareDialog } from "@/components/clips/share-dialog";
 import { JobProgress } from "@/components/clips/job-progress";
-import { formatDuration, generateHrefFromClip, resolutionName } from "@/lib/clip-links";
+import {
+  archiveHrefForClip,
+  clipHref,
+  formatDuration,
+  generateHrefFromClip,
+  heldUntil,
+  resolutionName,
+} from "@/lib/clip-links";
 import { humanizeBytes } from "@/lib/utils";
 import {
   useClip,
@@ -55,6 +63,7 @@ function ClipView({ clip }: { clip: ClipRecord }) {
   const model = models.find((m) => m.id === clip.model);
   const pinned = !!model && model.revision === clip.model_revision;
   const resolution = model ? resolutionName(clip, model.resolutions) : undefined;
+  const held = heldUntil(clip);
 
   const onDelete = () =>
     remove.mutate(
@@ -68,7 +77,7 @@ function ClipView({ clip }: { clip: ClipRecord }) {
       },
     );
 
-  const fields: [string, string][] = [
+  const fields: [string, ReactNode][] = [
     ["Clip id", clip.clip_id],
     ["Project", clip.project],
     ["Seed", String(clip.seed)],
@@ -86,7 +95,22 @@ function ClipView({ clip }: { clip: ClipRecord }) {
     ["File size", humanizeBytes(clip.size_bytes)],
     ["Created", new Date(clip.created_at).toLocaleString()],
     ["Archived", clip.archived_at ? new Date(clip.archived_at).toLocaleString() : "not yet"],
-    ["Regenerated from", clip.regenerated_from ?? "none"],
+    ...(held
+      ? ([[
+          "Held in Recent until",
+          `${held.toLocaleString()} (a share link for this key is live)`,
+        ]] as [string, ReactNode][])
+      : []),
+    [
+      "Regenerated from",
+      clip.regenerated_from ? (
+        <Link className="underline" href={clipHref(clip.project, clip.regenerated_from)}>
+          {clip.regenerated_from}
+        </Link>
+      ) : (
+        "none"
+      ),
+    ],
   ];
 
   return (
@@ -107,6 +131,7 @@ function ClipView({ clip }: { clip: ClipRecord }) {
             )}
             <div className="flex flex-wrap gap-1.5">
               <Badge variant={clip.tier === "archive" ? "secondary" : "outline"}>{clip.tier}</Badge>
+              {held && <Badge variant="outline">shared until {held.toLocaleString()}</Badge>}
               <Badge variant="outline">{clip.ai_label}</Badge>
             </div>
             <div className="flex flex-wrap gap-2 pt-1">
@@ -114,8 +139,12 @@ function ClipView({ clip }: { clip: ClipRecord }) {
               <Button
                 variant="outline"
                 size="sm"
-                disabled={!pinned || regenerate.isPending}
-                title={pinned ? undefined : "This revision is not in the pinned registry"}
+                disabled={!pinned || !model?.available || regenerate.isPending}
+                title={
+                  !pinned
+                    ? "This revision is not in the pinned registry"
+                    : (model?.unavailable_reason ?? undefined)
+                }
                 onClick={() =>
                   regenerate.mutate(
                     { project: clip.project, clipId: clip.clip_id },
@@ -135,6 +164,21 @@ function ClipView({ clip }: { clip: ClipRecord }) {
                   Use these settings
                 </Link>
               </Button>
+              {clip.tier === "recent" && (
+                <Button asChild variant="outline" size="sm">
+                  <Link
+                    href={archiveHrefForClip(clip)}
+                    title={
+                      held
+                        ? "Open the age job with 'Archive held clips anyway' on; live share links for this clip stop working if it moves"
+                        : "Open the age job for this project, set to include this clip"
+                    }
+                  >
+                    <Archive className="h-3.5 w-3.5" aria-hidden="true" />
+                    Archive...
+                  </Link>
+                </Button>
+              )}
               <AlertDialog>
                 <AlertDialogTrigger asChild>
                   <Button variant="outline" size="sm" className="text-destructive">
@@ -157,6 +201,14 @@ function ClipView({ clip }: { clip: ClipRecord }) {
                 </AlertDialogContent>
               </AlertDialog>
             </div>
+            {held && (
+              <p className="text-xs text-muted-foreground">
+                Held in Recent until {held.toLocaleString()}: a share link is signed for this
+                clip&apos;s current key, so the age job skips it until then. Archive... opens the
+                age job with &quot;Archive held clips anyway&quot; on; moving it now makes every
+                outstanding link for it stop working.
+              </p>
+            )}
           </CardContent>
         </Card>
 
@@ -176,7 +228,18 @@ function ClipView({ clip }: { clip: ClipRecord }) {
           </CardContent>
         </Card>
       </div>
-      <JobProgress jobId={regenerate.data?.job_id} />
+      <JobProgress
+        jobId={regenerate.data?.job_id}
+        match={(j) =>
+          j.kind === "regenerate" && j.project === clip.project && j.regenerated_from === clip.clip_id
+        }
+        onSucceeded={(job) => {
+          if (!job.clip_id) return;
+          toast.success("Regenerated clip ready", { description: "Opening it." });
+          router.push(clipHref(job.project, job.clip_id));
+        }}
+        idleText="Regenerate re-runs this clip's prompt, seed, model and revision as a new clip; its progress shows here."
+      />
     </div>
   );
 }

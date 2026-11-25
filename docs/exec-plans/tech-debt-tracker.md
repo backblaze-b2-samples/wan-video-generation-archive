@@ -58,3 +58,15 @@ Known tech debt items. Agents update this when they discover or create tech debt
 | Custom `FileNotFoundError` shadowed the built-in | Renamed to `FileNotFoundServiceError` |
 | Dropzone accepted any file type client-side | `accept` allow-list mirroring backend `ALLOWED_TYPES` (tested for drift) |
 | No test harness for feature specs | pytest suite across upload, files, activity, errors, validation, rate limit, pagination |
+
+## 2026-11-24 — verify
+- friction (unresolved after 3 rounds): Archive (from clip "Archive...") — prefilled form still needs Preview, then Dry run off, then "Archive clips" → the stages don't chain; one more manual step after the prefilled hand-off (.local/verify/A/r3/17-archive-from-clip.png)
+- friction (unresolved after 3 rounds): Clip detail right after an archive run — one lens saw "recent", "shared until" and "Archive..." still showing while Archive said "0 recent, 1 archived"; another lens saw the correct tier immediately → possible stale query cache after the age job, needs a source check (.local/verify/A/r3/20-clip-archived.png)
+- friction (unresolved after 3 rounds): Clip detail → Archive on a shared clip — "Archive..." opens with "Archive held clips anyway" already on, and running it kills the link just shared (206 → 404) → the default path from a shared clip breaks the user's own link; consider leaving the override off and offering it from the hold message (.local/verify/A/r3/16-clip-after-share.png)
+- friction (unresolved after 3 rounds): Share dialog — footer promises "not archived before then" with no mention of the override that the same clip's "Archive..." path pre-enables → the promise and the default archive path contradict each other (.local/verify/C/r3/07-share-recent.png)
+- Generate — Wan2.2 TI2V-5B disabled "(needs a CUDA GPU)" on Apple Silicon and Wan2.1 1.3B preselected → disclosed hardware limit; the goal's named model is only verifiable on a CUDA host (.local/verify/A/r3/05-model-options.png)
+- Generate revisited mid-run — selects briefly read "Loading..." with "Suggested here: 480p / 49 frames / 30" → the transient hint suggests heavier settings than the form holds (.local/verify/A/r3/09-generate-revisit.png)
+- Archive dry run with override — "link was valid until …" uses past tense for a link that is still live in a preview → reads as already dead (.local/verify/C/r3/21-archive-override-dry.png)
+- Bucket Explorer — header says "newest first" but Nov 23 folders sit above today's video/ folder → ordering doesn't match the label (.local/verify/C/r2/20-files.png)
+- Archive — "As of" field shows dd/mm/yyyy while results show 11/24/2026, and the UTC end-of-day cutoff renders as an odd local time → mixed date formats (.local/verify/A/r1/17-archive-preview-defaults.png, .local/verify/B/r1/19-archive-done.png)
+- README vs Generate — README lists presets height x width (low 320x576), the UI shows width x height (576x320) → dimension order inconsistent (.local/verify/C/20-generate-defaults.png)

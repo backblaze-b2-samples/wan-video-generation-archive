@@ -29,6 +29,14 @@ def test_generate_age_lookup_share(capsys):
                      "--dry-run")
     assert json.loads(out)["dry_run"] is True and len(json.loads(out)["moved"]) == 1
 
+    services.share.share("demo", clip["clip_id"], 900)
+    code, out = _run(capsys, services, "age", "--project", "demo", "--older-than-days", "0",
+                     "--dry-run")
+    assert json.loads(out)["moved"] == [] and len(json.loads(out)["held"]) == 1
+    code, out = _run(capsys, services, "age", "--project", "demo", "--older-than-days", "0",
+                     "--dry-run", "--include-held")
+    assert len(json.loads(out)["moved"]) == 1 and len(json.loads(out)["released"]) == 1
+
     code, out = _run(capsys, services, "lookup", "--project", "demo", "--clip-id",
                      clip["clip_id"])
     assert json.loads(out)["clip_id"] == clip["clip_id"]

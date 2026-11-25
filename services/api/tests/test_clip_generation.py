@@ -140,3 +140,12 @@ def test_list_and_projects_summaries():
     assert [r.prompt for r in services.clips.list_clips(q="fox")] == ["snowy fox"]
     assert [p.name for p in services.clips.projects()] == ["alpha", "beta"]
     assert services.clips.projects()[0].recent_count == 1
+
+
+def test_search_matches_the_full_mixed_case_clip_id():
+    """Clip ids carry uppercase T/Z; a pasted full id must still match."""
+    services, _, _, _ = make_services()
+    clip = _generate(services)
+    assert any(c.isupper() for c in clip.clip_id)
+    assert [r.clip_id for r in services.clips.list_clips(q=clip.clip_id)] == [clip.clip_id]
+    assert [r.clip_id for r in services.clips.list_clips(q=clip.clip_id.lower())] == [clip.clip_id]

@@ -14,11 +14,12 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime
 
-from app.config import layout
-from app.config.models import FRAME_OPTIONS, MODELS, get_model, is_pinned
+from app.config import layout, settings
+from app.config.models import MODELS, WanModelSpec, get_model, is_pinned
 from app.repo.clip_store import ClipStore
 from app.repo.manifest_store import ManifestStore
 from app.repo.video_encode import encode_mp4
+from app.service.availability import list_models, unavailable_reason
 from app.service.errors import (
     ClipNotFoundError,
     InvalidClipRequestError,
@@ -31,9 +32,13 @@ from app.types.clips import (
     GenerateClipRequest,
     ModelInfo,
     ProjectSummary,
-    ResolutionInfo,
 )
-from app.types.generation import GenerationSpec, StepCallback, VideoGenerator
+from app.types.generation import (
+    GenerationSpec,
+    StageCallback,
+    StepCallback,
+    VideoGenerator,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -42,6 +47,14 @@ SIDECAR_EXCLUDE = {"output_key", "settings_key", "tier", "archived_at"}
 
 def utcnow() -> datetime:
     return datetime.now(UTC)
+
+
+def is_held(record: ClipRecord, now: datetime) -> bool:
+    """A recent clip with a live share link: the age job keeps it at its current key."""
+    expires = record.share_expires_at
+    if record.tier != "recent" or expires is None:
+        return False
+    return (expires if expires.tzinfo else expires.replace(tzinfo=UTC)) > now
 
 
 @dataclass(frozen=True)
@@ -75,38 +88,20 @@ class ClipService:
     # --- models and projects -------------------------------------------------
 
     def models(self) -> list[ModelInfo]:
-        loaded = self.generator.loaded_model_id
-        return [
-            ModelInfo(
-                id=m.id,
-                label=m.label,
-                hf_repo=m.hf_repo,
-                revision=m.revision,
-                license=m.license,
-                fps=m.fps,
-                resolutions=[
-                    ResolutionInfo(name=r.name, width=r.width, height=r.height)
-                    for r in m.resolutions
-                ],
-                frame_options=list(FRAME_OPTIONS),
-                default_steps=m.default_steps,
-                default_guidance=m.default_guidance,
-                loaded=loaded == m.id,
-                device=self.generator.device if loaded == m.id else None,
-            )
-            for m in MODELS.values()
-        ]
+        return list_models(self.generator, settings.wan_model)
 
     def projects(self) -> list[ProjectSummary]:
         out = []
         for name in self.manifests.list_projects():
             records = self.manifests.read(name)
+            now = self.clock()
             out.append(
                 ProjectSummary(
                     name=name,
                     clip_count=len(records),
                     recent_count=sum(r.tier == "recent" for r in records),
                     archive_count=sum(r.tier == "archive" for r in records),
+                    held_count=sum(is_held(r, now) for r in records),
                     manifest_key=layout.manifest_key(name),
                     last_generated_at=max((r.created_at for r in records), default=None),
                 )
@@ -122,6 +117,12 @@ class ClipService:
                 "project must match ^[a-z0-9][a-z0-9-]{0,62}$ (lowercase letters, digits, hyphens)"
             )
 
+    def _check_available(self, model: WanModelSpec) -> None:
+        """Refuse a model this device cannot run, before any weights download."""
+        reason = unavailable_reason(model, self.generator.probe())
+        if reason:
+            raise InvalidClipRequestError(reason)
+
     def prepare_generate(self, req: GenerateClipRequest) -> PreparedGeneration:
         self._check_project(req.project)
         model = get_model(req.model_id)
@@ -129,6 +130,7 @@ class ClipService:
             raise InvalidClipRequestError(
                 f"Unknown model_id {req.model_id!r}; choose one of {sorted(MODELS)}"
             )
+        self._check_available(model)
         preset = model.resolution(req.resolution)
         if preset is None:
             names = [r.name for r in model.resolutions]
@@ -159,6 +161,7 @@ class ClipService:
                 "the pinned model registry; it cannot be regenerated exactly."
             )
         model = MODELS[source.model]
+        self._check_available(model)
         spec = GenerationSpec(
             model_id=model.id,
             hf_repo=model.hf_repo,
@@ -176,11 +179,18 @@ class ClipService:
 
     # --- generation ----------------------------------------------------------
 
-    def run(self, prepared: PreparedGeneration, on_step: StepCallback) -> ClipRecord:
+    def run(
+        self,
+        prepared: PreparedGeneration,
+        on_step: StepCallback,
+        on_stage: StageCallback | None = None,
+    ) -> ClipRecord:
         spec = prepared.spec
         started = time.monotonic()
-        video = self.generator.generate(spec, on_step)
+        video = self.generator.generate(spec, on_step, on_stage)
         elapsed = round(time.monotonic() - started, 3)
+        if on_stage:
+            on_stage("saving", "Encoding the MP4 and writing it to B2")
 
         created_at = self.clock()
         clip_id = layout.make_clip_id(created_at, self._token())
@@ -264,7 +274,7 @@ class ClipService:
             for p in projects
             for r in self.manifests.read(p)
             if (tier == "all" or r.tier == tier)
-            and (not needle or needle in r.prompt.lower() or needle in r.clip_id)
+            and (not needle or needle in r.prompt.lower() or needle in r.clip_id.lower())
         ]
         items.sort(key=lambda r: r.created_at, reverse=True)
         return items

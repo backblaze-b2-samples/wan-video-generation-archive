@@ -1,6 +1,6 @@
 import { QueryClient } from "@tanstack/react-query";
 import { beforeEach, describe, expect, it } from "vitest";
-import { dropDeletedFileFromCache, isJobActive, qk } from "@/lib/queries";
+import { applyAgeResult, dropDeletedFileFromCache, isJobActive, qk } from "@/lib/queries";
 import type { FileMetadata } from "@wan-video-generation-archive/shared";
 
 function file(key: string): FileMetadata {
@@ -92,5 +92,48 @@ describe("isJobActive", () => {
     expect(isJobActive({ status: "succeeded" })).toBe(false);
     expect(isJobActive({ status: "failed" })).toBe(false);
     expect(isJobActive(undefined)).toBe(false);
+  });
+});
+
+describe("applyAgeResult", () => {
+  const project = (name: string, recent: number, archived: number, held = 0) => ({
+    name,
+    clip_count: recent + archived,
+    recent_count: recent,
+    archive_count: archived,
+    held_count: held,
+    manifest_key: `video/manifests/${name}.jsonl`,
+    last_generated_at: null,
+  });
+  const result = (dry_run: boolean) => ({
+    project: "demo",
+    as_of: "2027-01-01T00:00:00Z",
+    cutoff: "2026-12-01T00:00:00Z",
+    moved: [
+      { clip_id: "a", from_key: "x", to_key: "y", created_at: "2026-11-01T00:00:00Z" },
+      { clip_id: "b", from_key: "x", to_key: "y", created_at: "2026-11-01T00:00:00Z" },
+    ],
+    kept_count: 0,
+    held: [],
+    released: [{ clip_id: "a", share_expires_at: "2027-01-01T01:00:00Z" }],
+    dry_run,
+  });
+
+  it("moves the counts of the aged project only", () => {
+    const out = applyAgeResult([project("demo", 2, 0), project("other", 1, 0)], result(false));
+    expect(out?.map((p) => [p.name, p.recent_count, p.archive_count])).toEqual([
+      ["demo", 0, 2],
+      ["other", 1, 0],
+    ]);
+  });
+
+  it("drops the held count by the clips archived despite a live link", () => {
+    const out = applyAgeResult([project("demo", 2, 0, 1)], result(false));
+    expect(out?.[0].held_count).toBe(0);
+  });
+
+  it("leaves the counts alone for a dry run", () => {
+    const before = [project("demo", 2, 0)];
+    expect(applyAgeResult(before, result(true))).toBe(before);
   });
 });

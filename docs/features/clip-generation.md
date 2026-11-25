@@ -12,12 +12,13 @@ Turn a text prompt into a short MP4 with an open Wan model on one GPU, and store
 
 ## Core Functions
 - `services/api/app/config/models.py`: pinned registry (`MODELS`, `FRAME_OPTIONS`, `SELF_TEST_PRESET`, `DEMO_PRESET`)
-- `services/api/app/repo/wan_pipeline.py`: `WanGenerator` (lazy torch/diffusers import, one pipeline resident), `select_device()`, `resolve_offload()`, `check_hf_endpoint()`
+- `services/api/app/repo/wan_pipeline.py`: `WanGenerator` (lazy torch/diffusers import, one pipeline resident, `probe()` for the device without loading weights, stage reporting), `select_device()`, `probe_device()`, `resolve_offload()`, `check_hf_endpoint()`
+- `services/api/app/service/availability.py`: `unavailable_reason()` (per-model hardware gate) and `list_models()` (`GET /models` with `available`, `unavailable_reason`, `default`, `run_device`, `recommended`)
 - `services/api/app/repo/video_encode.py`: `encode_mp4()` and `read_container_tags()`
 - `services/api/app/service/clips.py`: `ClipService.prepare_generate()` (validation) and `ClipService.run()` (generate, encode, write)
 - `services/api/app/service/labels.py`: `clip_metadata()` and `container_tags()`, the AI-generated label
-- `services/api/app/service/jobs.py`: `JobQueue` (FIFO, single worker, step progress)
-- `apps/web/src/components/clips/generate-form.tsx`, `apps/web/src/components/clips/job-progress.tsx`
+- `services/api/app/service/jobs.py`: `JobQueue` (FIFO, single worker, stage and step progress)
+- `apps/web/src/components/clips/generate-form.tsx`, `apps/web/src/components/clips/job-progress.tsx`, `apps/web/src/lib/generation.ts` (default model, active-job lookup, stage text)
 
 ## Canonical Files
 - Model adapter pattern: `services/api/app/repo/wan_pipeline.py`
@@ -28,15 +29,16 @@ Turn a text prompt into a short MP4 with an open Wan model on one GPU, and store
 - Env: `WAN_MODEL`, `WAN_DEVICE`, `WAN_CPU_OFFLOAD`, `HF_HOME`, `HF_TOKEN` (optional), `HF_ENDPOINT` (if set, must be `https://huggingface.co`)
 
 ## Outputs
-- `GenerationJob` with `status` `queued | running | succeeded | failed`, `step` / `total_steps`, and `clip_id` once stored
+- `GenerationJob` with `status` `queued | running | succeeded | failed`, `prompt`, `stage` (`downloading | loading | generating | saving` while running, else null) with a human-readable `stage_detail` (for example bytes downloaded so far) and `stage_started_at` (when the current stage began), `step` / `total_steps`, and `clip_id` once stored
+- `ModelInfo` (from `GET /models`) with `available`, `unavailable_reason` and `default`: TI2V-5B needs a CUDA GPU with 24 GB or more (`min_cuda_vram_gb`; a nominal 24 GB card that reports about 22.5 GiB passes), the 1.3B model runs on any detected device. `default` is `WAN_MODEL` when it can run here, else the first model that can. `run_device` is the probed device (no weights loaded); `recommended` is the preset the form starts from: `DEMO_PRESET` (480p, 49 frames, 30 steps) on CUDA, `SELF_TEST_PRESET` (low, 17 frames, 20 steps) elsewhere
 - Objects: `video/recent/<project>/<YYYY-MM-DD>/<clip_id>.mp4` (`video/mp4`) and `<clip_id>.json` (settings sidecar)
 - One new line in `video/manifests/<project>.jsonl` (see [manifest.md](manifest.md))
 - The label, three ways: S3 metadata `ai-generated: true`, `ai-label: AI-generated` (plus `sha256`, `clip-id`, `project`, `model`, `model-revision`, `seed`); MP4 container tags `ai_generated=true`, `ai_label=AI-generated`, `comment`, `model`, `model_revision`, `seed` (written with `-movflags +faststart+use_metadata_tags`); and the manifest fields `ai_generated`, `ai_label`
 
 ## Flow
-- The API validates the request against the registry (unknown model or resolution: 400) and resolves the seed, then queues the job and answers 202
+- The API validates the request against the registry (unknown model or resolution: 400) and against the device (a model this device cannot run: 400 with the reason, before any weights download), resolves the seed, then queues the job and answers 202. Regenerate applies the same device check
 - The worker loads the pinned pipeline if needed: `DiffusionPipeline.from_pretrained(repo, revision=<40-hex sha>)`, VAE in float32, the rest in bfloat16 on CUDA/MPS (float32 on CPU). Device: `WAN_DEVICE=auto` picks CUDA, then MPS, then CPU. On CUDA with less than 40 GB VRAM, `WAN_CPU_OFFLOAD=auto` enables model CPU offload
-- Denoising reports each step; the UI polls `GET /jobs/{job_id}` every 1.5 s
+- The job reports its stage: `loading` (checking the cache), `downloading` on a first run (the pinned snapshot is fetched with `DiffusionPipeline.download` before loading, and the bytes in the Hugging Face cache are reported every 2 s), `loading` again while the pipeline loads in three named parts (VAE, then text encoder and transformer, then moving the weights onto the device), `generating` with each denoising step, then `saving` while the MP4 is encoded and written. The UI polls `GET /jobs/{job_id}` every 1.5 s
 - Frames are encoded to H.264 MP4 with the bundled ffmpeg (`imageio-ffmpeg`), hashed (SHA-256), then written: MP4, sidecar, manifest line. A failure at any step deletes what was already written
 
 ## Edge Cases
@@ -44,16 +46,22 @@ Turn a text prompt into a short MP4 with an open Wan model on one GPU, and store
 - Manifest write fails after the MP4 is stored -> MP4 and sidecar are deleted, job `failed`
 - `HF_ENDPOINT` points at a mirror -> the worker refuses to load the model
 - A second job while one runs -> waits in the FIFO (`queued`); jobs are lost on API restart, stored clips are not
-- First run on a fresh host -> the weights download from huggingface.co before step 1 (minutes); the job stays `running` at step 0 meanwhile
+- First run on a fresh host -> the weights download from huggingface.co before step 1 (minutes); the job shows stage `downloading` with the bytes fetched so far
+- TI2V-5B on a Mac, a CPU host or a small GPU -> greyed out in the form with the reason, and `POST /clips` answers 400 before anything downloads
+- The model stack (torch) is not installed -> every model is unavailable with the install command as the reason
+- Reload or leave `/generate` mid-run -> the job id is not kept in the page: the Current job card re-attaches to the newest queued or running job from `GET /jobs`, and the form restores this tab's unsent values from `sessionStorage` (a URL pre-fill wins over the draft; blocked storage just means no restore)
 
 ## UX States
-- Empty: form with safe defaults shown as placeholders and descriptions (no autofill button)
-- Loading: "Queuing..." on submit, then a progress bar with step N / total
+- Empty: form with safe defaults shown as placeholders and descriptions (no autofill button); the model select pre-selects the API's `default` and disables models this machine cannot run, and the submit button is disabled while an unrunnable model is selected. Resolution, frames and steps start from the model's `recommended` preset; off CUDA a note names the device and the light preset. The project starts at the Settings default and its description says clips are grouped under `video/recent/<project>/`
+- "Generate clip" sits right after the Prompt card (prompt, negative prompt, project), above Model and settings, so it is in view at 1440x900 without scrolling
+- Loading: "Queuing..." on submit, then the Current job card names the stage (Downloading model weights, Loading model, Generating: step N / total, Saving to B2) with its detail; during downloading and loading (no step counter) it shows seconds elapsed in the stage, ticking every second, and the load detail names its part (1 to 3 of 3); the progress bar shows during generating and saving
+- Recent jobs: each row shows the prompt, a spinner with the live stage or step while active, and selects that job into the Current job card when clicked
 - Error: toast for a rejected request; red error text on a failed job
-- Done: "Open clip" link to `/clip`
+- Done: the page opens the new clip automatically when the job it queued (or re-attached to) is seen going from active to succeeded; "Open clip" stays on the card for a job that finished while the page was away
 
 ## Verification
 - Test files: `services/api/tests/test_clip_generation.py`, `services/api/tests/test_clip_routes.py`, `services/api/tests/test_model_registry.py`, `services/api/live_tests/test_wan_archive_e2e.py`
+- Also: `services/api/tests/test_model_availability.py` (5B gated to CUDA with 24 GB, Mac default is the 1.3B model, refusal before generation, job prompt and stages), `apps/web/src/lib/generation.test.ts`, `apps/web/src/lib/generate-draft.test.ts`
 - Required cases: objects + metadata + manifest line written; MP4 container tags read back from a real tiny MP4; random seed recorded; generation failure and manifest failure leave nothing; registry rejects unknown model/resolution; device autodetect order; offload rule; API never imports torch
 - Focused verify command: `pnpm test:api`
 - Live: `RUN_LIVE_B2_TESTS=1 pnpm test:live:gpu` on a host with the model stack (see [verification.md](../verification.md))

@@ -104,3 +104,86 @@ def test_copy_uses_metadata_directive_copy():
     _at(services, clock, datetime(2026, 1, 1, tzinfo=UTC))
     services.archive.age("demo", as_of=datetime(2026, 6, 1, tzinfo=UTC))
     assert all(c["extra"] == {"MetadataDirective": "COPY"} for c in s3.copies)
+
+
+def test_live_share_link_holds_clip_in_recent_until_it_expires():
+    """A presigned link is bound to one key: the move waits for the link to expire."""
+    services, s3, _, clock = make_services()
+    clip = _at(services, clock, datetime(2026, 1, 1, tzinfo=UTC))
+    link = services.share.share("demo", clip.clip_id, 3600)
+    assert services.clips.get("demo", clip.clip_id).share_expires_at == link.expires_at
+
+    held = services.archive.age("demo", older_than_days=0)
+    assert held.moved == [] and held.kept_count == 1
+    assert [(h.clip_id, h.share_expires_at) for h in held.held] == [
+        (clip.clip_id, link.expires_at)
+    ]
+    assert clip.output_key in s3.objects  # the link still resolves
+    # A future as_of previews aging but cannot expire a real link early.
+    future = services.archive.age("demo", 0, as_of=datetime(2027, 1, 1, tzinfo=UTC))
+    assert future.moved == [] and len(future.held) == 1
+
+    clock.advance(seconds=3601)
+    moved = services.archive.age("demo", older_than_days=0)
+    assert [m.clip_id for m in moved.moved] == [clip.clip_id] and moved.held == []
+    assert services.clips.get("demo", clip.clip_id).tier == "archive"
+
+
+def test_share_minted_during_the_copy_cancels_the_move():
+    services, s3, _, clock = make_services()
+    clip = _at(services, clock, datetime(2026, 1, 1, tzinfo=UTC))
+    real_copy = s3.copy
+
+    def copy_then_share(**kwargs):
+        real_copy(**kwargs)
+        if kwargs["Key"].endswith(".json"):
+            services.share.share("demo", clip.clip_id, 900)
+
+    s3.copy = copy_then_share
+    result = services.archive.age("demo", older_than_days=0)
+    assert result.moved == [] and [h.clip_id for h in result.held] == [clip.clip_id]
+    record = services.clips.get("demo", clip.clip_id)
+    assert record.tier == "recent" and record.output_key == clip.output_key
+    assert clip.output_key in s3.objects
+    assert not any(k.startswith("video/archive/") for k in s3.objects)
+
+
+def test_share_of_an_archived_clip_sets_no_hold():
+    services, _, _, clock = make_services()
+    clip = _at(services, clock, datetime(2026, 1, 1, tzinfo=UTC))
+    services.archive.age("demo", older_than_days=0)
+    services.share.share("demo", clip.clip_id, 900)
+    assert services.clips.get("demo", clip.clip_id).share_expires_at is None
+
+
+def test_include_held_moves_a_held_clip_and_clears_its_hold():
+    """The deliberate way through: the clip moves now and its live link stops working."""
+    services, s3, _, clock = make_services()
+    clip = _at(services, clock, datetime(2026, 1, 1, tzinfo=UTC))
+    link = services.share.share("demo", clip.clip_id, 3600)
+
+    preview = services.archive.age("demo", 0, dry_run=True, include_held=True)
+    assert [m.clip_id for m in preview.moved] == [clip.clip_id] and preview.held == []
+    assert [(r.clip_id, r.share_expires_at) for r in preview.released] == [
+        (clip.clip_id, link.expires_at)
+    ]
+    assert services.clips.get("demo", clip.clip_id).tier == "recent"
+
+    result = services.archive.age("demo", 0, include_held=True)
+    assert [m.clip_id for m in result.moved] == [clip.clip_id]
+    assert result.held == [] and result.kept_count == 0
+    assert [r.clip_id for r in result.released] == [clip.clip_id]
+    record = services.clips.get("demo", clip.clip_id)
+    assert record.tier == "archive" and record.share_expires_at is None
+    assert clip.output_key not in s3.objects
+
+
+def test_project_summary_counts_held_clips():
+    services, _, _, clock = make_services()
+    clip = _at(services, clock, datetime(2026, 1, 1, tzinfo=UTC))
+    _at(services, clock, datetime(2026, 1, 2, tzinfo=UTC))
+    services.share.share("demo", clip.clip_id, 900)
+    [summary] = services.clips.projects()
+    assert summary.recent_count == 2 and summary.held_count == 1
+    clock.advance(seconds=901)
+    assert services.clips.projects()[0].held_count == 0

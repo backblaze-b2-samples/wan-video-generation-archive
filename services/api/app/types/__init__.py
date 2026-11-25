@@ -2,6 +2,7 @@ from app.types.base import ResponseModel
 from app.types.clips import (
     AgeJobRequest,
     AgeJobResult,
+    ArchiveHold,
     ArchiveMove,
     ClipList,
     ClipRecord,
@@ -27,6 +28,7 @@ from app.types.stats import UploadStats
 __all__ = [
     "AgeJobRequest",
     "AgeJobResult",
+    "ArchiveHold",
     "ArchiveMove",
     "ClipList",
     "ClipRecord",

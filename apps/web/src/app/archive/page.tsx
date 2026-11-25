@@ -1,3 +1,6 @@
+import { Suspense } from "react";
+
+import { Skeleton } from "@/components/ui/skeleton";
 import { ArchiveForm } from "@/components/clips/archive-form";
 
 export default function ArchivePage() {
@@ -12,7 +15,10 @@ export default function ArchivePage() {
         </p>
       </div>
       <div className="animate-fade-in-up stagger-2 max-w-4xl">
-        <ArchiveForm />
+        {/* ArchiveForm reads ?project=&days= (useSearchParams needs a boundary). */}
+        <Suspense fallback={<Skeleton className="h-64 w-full" />}>
+          <ArchiveForm />
+        </Suspense>
       </div>
     </div>
   );

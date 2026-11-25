@@ -8,7 +8,13 @@ from urllib.parse import urlencode
 from botocore.exceptions import ClientError
 
 from app.service.container import Services, build_services
-from app.types.generation import GeneratedVideo, GenerationSpec, StepCallback
+from app.types.generation import (
+    DeviceProbe,
+    GeneratedVideo,
+    GenerationSpec,
+    StageCallback,
+    StepCallback,
+)
 
 
 def _missing(op: str) -> ClientError:
@@ -86,11 +92,22 @@ class InMemoryS3:
 class FakeGenerator:
     """Deterministic tiny frames; records every spec it was asked for."""
 
-    def __init__(self, width: int = 32, height: int = 32, fail: bool = False):
+    def __init__(
+        self,
+        width: int = 32,
+        height: int = 32,
+        fail: bool = False,
+        device_probe: DeviceProbe | None = None,
+    ):
         self.size = (width, height)
         self.fail = fail
         self.calls: list[GenerationSpec] = []
         self._loaded: str | None = None
+        # Default: a GPU host where every registry model can run.
+        self.device_probe = device_probe or DeviceProbe("cuda", 80.0)
+
+    def probe(self) -> DeviceProbe:
+        return self.device_probe
 
     @property
     def loaded_model_id(self):
@@ -100,10 +117,18 @@ class FakeGenerator:
     def device(self):
         return "cpu" if self._loaded else None
 
-    def generate(self, spec: GenerationSpec, on_step: StepCallback) -> GeneratedVideo:
+    def generate(
+        self,
+        spec: GenerationSpec,
+        on_step: StepCallback,
+        on_stage: StageCallback | None = None,
+    ) -> GeneratedVideo:
+        stage = on_stage or (lambda s, d: None)
         self.calls.append(spec)
+        stage("loading", f"Loading {spec.model_id} onto cpu")
         if self.fail:
             raise RuntimeError("out of memory")
+        stage("generating", None)
         self._loaded = spec.model_id
         for step in range(spec.num_inference_steps):
             on_step(step + 1, spec.num_inference_steps)

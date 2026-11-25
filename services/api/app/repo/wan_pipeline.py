@@ -13,16 +13,28 @@ import logging
 import os
 import threading
 from collections.abc import Callable
+from pathlib import Path
 from typing import Any
 
 from app.config.models import HF_BASE_URL
-from app.types.generation import GeneratedVideo, GenerationSpec, StepCallback
+from app.types.generation import (
+    DeviceProbe,
+    GeneratedVideo,
+    GenerationSpec,
+    StageCallback,
+    StepCallback,
+)
 
 logger = logging.getLogger(__name__)
 
 DEVICE_CHOICES = ("auto", "cuda", "mps", "cpu")
 OFFLOAD_CHOICES = ("auto", "on", "off")
 OFFLOAD_AUTO_BELOW_GB = 40.0
+DOWNLOAD_POLL_SECONDS = 2.0
+MODEL_STACK_MISSING = (
+    "The model stack is not installed: run "
+    "`services/api/.venv/bin/pip install -r services/api/requirements-model.txt`."
+)
 
 
 def check_hf_endpoint(value: str | None) -> None:
@@ -64,6 +76,53 @@ def resolve_offload(setting: str, device: str, vram_gb: float | None) -> bool:
     return value == "on"
 
 
+def _mps_available(torch: Any) -> bool:
+    return bool(getattr(torch.backends, "mps", None)) and torch.backends.mps.is_available()
+
+
+def probe_device(preference: str) -> DeviceProbe:
+    """The device `WAN_DEVICE` resolves to, and its VRAM on CUDA. Loads no weights."""
+    try:
+        import torch
+    except ImportError:
+        return DeviceProbe(None, error=MODEL_STACK_MISSING)
+    try:
+        device = select_device(preference, torch.cuda.is_available, lambda: _mps_available(torch))
+    except ValueError as e:
+        return DeviceProbe(None, error=str(e))
+    if device != "cuda":
+        return DeviceProbe(device)
+    if not torch.cuda.is_available():
+        return DeviceProbe(None, error="WAN_DEVICE=cuda, but no CUDA device is available.")
+    return DeviceProbe("cuda", torch.cuda.get_device_properties(0).total_memory / 1024**3)
+
+
+def format_bytes(n: float) -> str:
+    for unit in ("B", "KB", "MB"):
+        if n < 1024:
+            return f"{n:.0f} {unit}" if unit == "B" else f"{n:.1f} {unit}"
+        n /= 1024
+    return f"{n:.1f} GB"
+
+
+def hf_cache_bytes(hf_repo: str) -> int:
+    """Bytes in the Hugging Face cache for a repo, partial downloads included."""
+    from huggingface_hub import constants
+
+    blobs = Path(constants.HF_HUB_CACHE) / f"models--{hf_repo.replace('/', '--')}" / "blobs"
+    try:
+        return sum(f.stat().st_size for f in blobs.iterdir() if f.is_file())
+    except OSError:
+        return 0
+
+
+def _report_download(hf_repo: str, on_stage: StageCallback, stop: threading.Event) -> None:
+    start = hf_cache_bytes(hf_repo)
+    while not stop.wait(DOWNLOAD_POLL_SECONDS):
+        got = hf_cache_bytes(hf_repo) - start
+        on_stage("downloading", f"{format_bytes(got)} downloaded from huggingface.co")
+
+
 def frames_to_rgb24(frames: Any) -> tuple[list[bytes], int, int]:
     """Diffusers `output_type="np"` frames (F, H, W, 3) floats in [0, 1] -> RGB24 bytes.
 
@@ -86,6 +145,7 @@ class WanGenerator:
         self._loaded_model_id: str | None = None
         self._device: str | None = None
         self._offload = False
+        self._probe: DeviceProbe | None = None
         self._lock = threading.Lock()
 
     @property
@@ -100,25 +160,57 @@ class WanGenerator:
     def offload_enabled(self) -> bool:
         return self._offload
 
-    def _load(self, spec: GenerationSpec) -> None:
+    def probe(self) -> DeviceProbe:
+        """Cached: the device does not change while the process runs."""
+        if self._probe is None:
+            self._probe = probe_device(self._device_preference)
+        return self._probe
+
+    @staticmethod
+    def _ensure_weights(spec: GenerationSpec, on_stage: StageCallback) -> None:
+        """Download the pinned snapshot first (if not cached) so the UI can show it."""
+        from diffusers import DiffusionPipeline
+
+        try:
+            DiffusionPipeline.download(spec.hf_repo, revision=spec.revision, local_files_only=True)
+            return
+        except Exception:  # any miss means "not fully cached yet"
+            pass
+        on_stage("downloading", f"Starting the first-run download of {spec.hf_repo}")
+        stop = threading.Event()
+        watcher = threading.Thread(
+            target=_report_download, args=(spec.hf_repo, on_stage, stop), daemon=True
+        )
+        watcher.start()
+        try:
+            DiffusionPipeline.download(spec.hf_repo, revision=spec.revision)
+        finally:
+            stop.set()
+            watcher.join()
+
+    def _load(self, spec: GenerationSpec, on_stage: StageCallback) -> None:
         if self._loaded_key == (spec.hf_repo, spec.revision):
             return
         check_hf_endpoint(os.environ.get("HF_ENDPOINT"))
+        on_stage("loading", "Checking the model cache")
         import torch
         from diffusers import AutoencoderKLWan, DiffusionPipeline
 
         self.unload()
+        self._ensure_weights(spec, on_stage)
         device = select_device(
-            self._device_preference,
-            torch.cuda.is_available,
-            lambda: bool(getattr(torch.backends, "mps", None))
-            and torch.backends.mps.is_available(),
+            self._device_preference, torch.cuda.is_available, lambda: _mps_available(torch)
         )
+        on_stage("loading", f"Loading {spec.model_id} onto {device}: VAE (part 1 of 3)")
         dtype = torch.float32 if device == "cpu" else torch.bfloat16
         logger.info("Loading %s@%s on %s", spec.hf_repo, spec.revision, device)
         # The Wan VAE is numerically sensitive: keep it in float32.
         vae = AutoencoderKLWan.from_pretrained(
             spec.hf_repo, subfolder="vae", revision=spec.revision, torch_dtype=torch.float32
+        )
+        on_stage(
+            "loading", f"Loading {spec.model_id} onto {device}: text encoder and transformer "
+            "(part 2 of 3)"
         )
         pipe = DiffusionPipeline.from_pretrained(
             spec.hf_repo, revision=spec.revision, vae=vae, torch_dtype=dtype
@@ -127,6 +219,7 @@ class WanGenerator:
         if device == "cuda":
             vram_gb = torch.cuda.get_device_properties(0).total_memory / 1024**3
         self._offload = resolve_offload(self._cpu_offload, device, vram_gb)
+        on_stage("loading", f"Loading {spec.model_id} onto {device}: moving weights (part 3 of 3)")
         if self._offload:
             pipe.enable_model_cpu_offload()
         else:
@@ -153,9 +246,16 @@ class WanGenerator:
         except ImportError:  # pragma: no cover - torch absent means nothing was loaded
             pass
 
-    def generate(self, spec: GenerationSpec, on_step: StepCallback) -> GeneratedVideo:
+    def generate(
+        self,
+        spec: GenerationSpec,
+        on_step: StepCallback,
+        on_stage: StageCallback | None = None,
+    ) -> GeneratedVideo:
+        stage = on_stage or (lambda _stage, _detail: None)
         with self._lock:
-            self._load(spec)
+            self._load(spec, stage)
+            stage("generating", None)
             import diffusers
             import torch
 

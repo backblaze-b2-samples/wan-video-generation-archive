@@ -17,7 +17,7 @@ Keep one append-style record per project that explains and can reproduce every c
 - Read-modify-write under a lock: `services/api/app/repo/manifest_store.py`
 
 ## Inputs
-- `ClipRecord` fields: `schema_version`, `clip_id`, `project`, `prompt`, `negative_prompt`, `seed`, `model`, `model_revision`, `model_license`, `diffusers_version`, `torch_version`, `device`, `width`, `height`, `num_frames`, `fps`, `num_inference_steps`, `guidance_scale`, `output_key`, `settings_key`, `tier`, `sha256`, `size_bytes`, `created_at`, `archived_at`, `ai_generated` (always true), `ai_label` (`AI-generated`), `generation_seconds`, `regenerated_from`
+- `ClipRecord` fields: `schema_version`, `clip_id`, `project`, `prompt`, `negative_prompt`, `seed`, `model`, `model_revision`, `model_license`, `diffusers_version`, `torch_version`, `device`, `width`, `height`, `num_frames`, `fps`, `num_inference_steps`, `guidance_scale`, `output_key`, `settings_key`, `tier`, `sha256`, `size_bytes`, `created_at`, `archived_at`, `ai_generated` (always true), `ai_label` (`AI-generated`), `generation_seconds`, `regenerated_from`, `share_expires_at` (latest expiry of a share link minted while the clip was recent; the age job holds the clip until then)
 
 ## Outputs
 - The JSONL object (`application/x-ndjson`); deleted when its last line is removed

@@ -21,5 +21,7 @@ def age_project(project: str, body: AgeJobRequest):
     """Move clips older than N days to video/archive/ and rewrite their manifest keys."""
     archive = get_services().archive
     return call(
-        lambda: archive.age(project, body.older_than_days, body.as_of, body.dry_run)
+        lambda: archive.age(
+            project, body.older_than_days, body.as_of, body.dry_run, body.include_held
+        )
     )

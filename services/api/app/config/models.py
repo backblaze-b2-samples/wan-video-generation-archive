@@ -39,6 +39,9 @@ class WanModelSpec:
     resolutions: tuple[ResolutionPreset, ...]
     default_steps: int = 30
     default_guidance: float = 5.0
+    # Hardware gate checked before a job is accepted (service/availability.py).
+    # None means the model runs on any device (CUDA, Apple MPS, or slowly on CPU).
+    min_cuda_vram_gb: float | None = None
 
     def resolution(self, name: str) -> ResolutionPreset | None:
         return next((r for r in self.resolutions if r.name == name), None)
@@ -57,6 +60,8 @@ MODELS: dict[str, WanModelSpec] = {
             license="apache-2.0",
             role="validation + demo",
             fps=24,
+            # Model-card requirement, recorded by `pnpm gpu:preflight`: CUDA only.
+            min_cuda_vram_gb=24.0,
             resolutions=(
                 ResolutionPreset("low", 384, 672),
                 ResolutionPreset("480p", 480, 832),
@@ -79,9 +84,10 @@ MODELS: dict[str, WanModelSpec] = {
     )
 }
 
-# Smallest real run: what the live self-test and a smoke check use.
+# Smallest real run: what the live self-test and a smoke check use, and what the
+# Generate form starts from off CUDA (service/availability.py).
 SELF_TEST_PRESET = {"resolution": "low", "num_frames": 17, "num_inference_steps": 20}
-# The demo default the Generate form pre-selects and gpu_preflight.py measures.
+# The demo default the Generate form pre-selects on CUDA and gpu_preflight.py measures.
 DEMO_PRESET = {
     "resolution": "480p",
     "num_frames": 49,

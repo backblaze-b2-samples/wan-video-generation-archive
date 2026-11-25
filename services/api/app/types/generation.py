@@ -39,6 +39,22 @@ class GeneratedVideo:
 
 # Called after each denoising step with (step, total_steps).
 StepCallback = Callable[[int, int], None]
+# Called when a generation enters a stage: (stage, optional human-readable detail).
+# Stages: "downloading" (first-run weights), "loading", "generating", "saving".
+StageCallback = Callable[[str, str | None], None]
+
+
+@dataclass(frozen=True)
+class DeviceProbe:
+    """The accelerator generation would run on, found without loading a model.
+
+    `device` is None when it cannot be determined (for example, torch is not
+    installed); `error` then says why.
+    """
+
+    device: str | None
+    vram_gb: float | None = None
+    error: str | None = None
 
 
 class VideoGenerator(Protocol):
@@ -48,4 +64,11 @@ class VideoGenerator(Protocol):
     @property
     def device(self) -> str | None: ...
 
-    def generate(self, spec: GenerationSpec, on_step: StepCallback) -> GeneratedVideo: ...
+    def probe(self) -> DeviceProbe: ...
+
+    def generate(
+        self,
+        spec: GenerationSpec,
+        on_step: StepCallback,
+        on_stage: StageCallback | None = None,
+    ) -> GeneratedVideo: ...

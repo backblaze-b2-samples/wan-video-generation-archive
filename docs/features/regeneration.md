@@ -5,7 +5,7 @@
 Prove a clip is reproducible: re-run it from its manifest entry's prompt, seed, model and pinned revision.
 
 ## Used By
-- UI: "Regenerate" on `/clip`
+- UI: "Regenerate" on `/clip` (disabled with the reason when the clip's model cannot run on this device); the Current job card re-attaches to a running regeneration of this clip after a reload; a regenerated clip's "Regenerated from" row links to the source clip
 - API: `POST /projects/{project}/clips/{clip_id}/regenerate` (202, `GenerationJob` with `kind: regenerate`)
 - CLI: `wan_archive.py regenerate --project <p> --clip-id <id>`
 

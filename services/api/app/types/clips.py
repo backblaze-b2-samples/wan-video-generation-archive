@@ -11,6 +11,7 @@ Tier = Literal["recent", "archive"]
 TierFilter = Literal["recent", "archive", "all"]
 JobKind = Literal["generate", "regenerate"]
 JobStatus = Literal["queued", "running", "succeeded", "failed"]
+JobStage = Literal["downloading", "loading", "generating", "saving"]
 FrameCount = Literal[17, 33, 49, 81, 121]
 
 PROJECT_PATTERN = r"^[a-z0-9][a-z0-9-]{0,62}$"
@@ -20,6 +21,12 @@ class ResolutionInfo(ResponseModel):
     name: str
     width: int
     height: int
+
+
+class GenerationPreset(ResponseModel):
+    resolution: str
+    num_frames: int
+    num_inference_steps: int
 
 
 class ModelInfo(ResponseModel):
@@ -37,6 +44,25 @@ class ModelInfo(ResponseModel):
     default_guidance: float
     loaded: bool
     device: str | None = Field(description="Device of the loaded pipeline; null when not loaded.")
+    available: bool = Field(
+        description="Whether this model can run on the API's device; checked before any download."
+    )
+    unavailable_reason: str | None = Field(
+        default=None, description="Why the model cannot run here; null when available."
+    )
+    default: bool = Field(
+        description="The model the Generate form pre-selects: WAN_MODEL if it can run, "
+        "else the first model that can."
+    )
+    run_device: str | None = Field(
+        default=None,
+        description="Device this API generates on (cuda, mps or cpu), probed without loading "
+        "weights; null when it cannot be determined.",
+    )
+    recommended: GenerationPreset = Field(
+        description="Settings the Generate form starts from: the demo preset on CUDA, the light "
+        "preset elsewhere, where every step is much slower."
+    )
 
 
 class ProjectSummary(ResponseModel):
@@ -44,6 +70,10 @@ class ProjectSummary(ResponseModel):
     clip_count: int
     recent_count: int
     archive_count: int
+    held_count: int = Field(
+        default=0,
+        description="Recent clips held there by a live share link (counted in recent_count).",
+    )
     manifest_key: str
     last_generated_at: datetime | None
 
@@ -80,6 +110,11 @@ class ClipRecord(ResponseModel):
     ai_label: str = "AI-generated"
     generation_seconds: float
     regenerated_from: str | None = None
+    share_expires_at: datetime | None = Field(
+        default=None,
+        description="Latest expiry of a share link minted while the clip was recent. A presigned "
+        "link is bound to one key, so the age job keeps the clip in recent until then.",
+    )
 
 
 class ClipList(ResponseModel):
@@ -105,6 +140,16 @@ class GenerationJob(ResponseModel):
     kind: JobKind
     status: JobStatus
     project: str
+    prompt: str
+    stage: JobStage | None = Field(
+        default=None, description="What a running job is doing now; null when not running."
+    )
+    stage_detail: str | None = Field(
+        default=None, description="Human-readable progress for the stage (e.g. bytes downloaded)."
+    )
+    stage_started_at: datetime | None = Field(
+        default=None, description="When the current stage began; null when not running."
+    )
     step: int
     total_steps: int
     clip_id: str | None = None
@@ -142,6 +187,10 @@ class AgeJobRequest(BaseModel):
         default=None, description="Clock override; defaults to now. A future date previews aging."
     )
     dry_run: bool = False
+    include_held: bool = Field(
+        default=False,
+        description="Also move clips held by a live share link; those links stop working.",
+    )
 
 
 class ArchiveMove(ResponseModel):
@@ -151,10 +200,25 @@ class ArchiveMove(ResponseModel):
     created_at: datetime
 
 
+class ArchiveHold(ResponseModel):
+    """A clip old enough to archive, held in recent while a share link for its key is live."""
+
+    clip_id: str
+    share_expires_at: datetime
+
+
 class AgeJobResult(ResponseModel):
     project: str
     as_of: datetime
     cutoff: datetime
     moved: list[ArchiveMove]
-    kept_count: int
+    kept_count: int = Field(description="Clips left in recent, including `held` ones.")
+    held: list[ArchiveHold] = Field(
+        default_factory=list,
+        description="Old enough, but kept in recent until their share link expires.",
+    )
+    released: list[ArchiveHold] = Field(
+        default_factory=list,
+        description="Clips moved despite a live share link (include_held); those links now fail.",
+    )
     dry_run: bool
